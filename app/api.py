@@ -45,9 +45,10 @@ def main():
                     del track['@attr']
 
                     tracksfact.append(track)
-                except: 
+                except Exception:
                     pass
-        except:
+
+        except Exception:
             pass
 
     artistfact = pd.DataFrame(artistfact)
