@@ -15,6 +15,7 @@ def main():
     argartists['rank'] = argartists['rank'] + 1
 
     artistfact = []
+    tracksfact = []
     for index, artist in argartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
         try:
@@ -32,12 +33,27 @@ def main():
         except Exception:
             pass
 
+        try:
+            tracks = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={name}&api_key={key}&format=json')
+            for i, track in enumerate(tracks):
+                try:
+                    track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
+                    track['rank'] = track['@attr']['rank']
+                    track['stats_date'] = datetime.now().strftime('%Y-%m-%d') 
+                    track['artist'] = artist['name']
+
+                    del track['@attr']
+
+                    tracksfact.append(track)
+                except: 
+                    pass
+        except:
+            pass
+
     artistfact = pd.DataFrame(artistfact)
-
-    # TODO: artistfact to redshift
-
-    # TODO: Sacar top temas
 
     # TODO: Sacar top albums
 
     # TODO: Actualizar DIM con top tema, top album, top rank, nuevos valores de listeners y reproducciones
+
+    # TODO: todo a redshift
