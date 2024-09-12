@@ -1,7 +1,50 @@
 import json
 import requests
 import pandas as pd
+from itertools import chain
 from datetime import datetime
+
+
+def process_artist(name, key, argartists, index):
+    try:
+        artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
+        artist = {col: artist.json()['artist'][col] for col in artist.json()['artist'] if col in ('name', 'stats')}
+        artist['listeners'] = artist['stats']['listeners']
+        artist['playcount'] = artist['stats']['playcount']
+        artist['rank'] = argartists.loc[index, 'rank']
+        artist['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+
+        del artist['stats']
+
+    except Exception:
+        return None
+
+    return artist
+
+
+def process_tracks(name, key, argartists, index):
+    tracks = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={name}&api_key={key}&format=json')
+    tracklist = []
+
+    for i in range(0, len(tracks.json()['toptracks']['track'])):
+        tracklist.append(process_track(i, tracks, argartists.loc[index, 'name']))
+
+    return tracklist
+
+
+def process_track(i, tracks, name):
+    try:
+        track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
+
+        track['rank'] = track['@attr']['rank']
+        track['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+        track['artist'] = name
+        del track['@attr']
+
+        return track
+
+    except Exception:
+        return None
 
 
 def main():
@@ -18,43 +61,22 @@ def main():
     tracksfact = []
     for index, artist in argartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
-        try:
-            artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
-            artist = {col: artist.json()['artist'][col] for col in artist.json()['artist'] if col in ('name', 'stats')}
 
-            artist['listeners'] = artist['stats']['listeners']
-            artist['playcount'] = artist['stats']['playcount']
-            artist['rank'] = argartists.loc[index, 'rank']
-            artist['stats_date'] = datetime.now().strftime('%Y-%m-%d') 
-
-            del artist['stats']
-
-            artistfact.append(artist)
-        except Exception:
-            pass
-
-        try:
-            tracks = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={name}&api_key={key}&format=json')
-            for i, track in enumerate(tracks):
-                try:
-                    track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
-                    track['rank'] = track['@attr']['rank']
-                    track['stats_date'] = datetime.now().strftime('%Y-%m-%d') 
-                    track['artist'] = artist['name']
-
-                    del track['@attr']
-
-                    tracksfact.append(track)
-                except Exception:
-                    pass
-
-        except Exception:
-            pass
+        artistfact.append(process_artist(name, key, argartists, index))
+        tracksfact.append(process_tracks(name, key, argartists, index))
 
     artistfact = pd.DataFrame(artistfact)
+    tracksfact = list(chain(*tracksfact))
+    tracksfact = pd.DataFrame(tracksfact)
+
+    print(tracksfact)
 
     # TODO: Sacar top albums
 
     # TODO: Actualizar DIM con top tema, top album, top rank, nuevos valores de listeners y reproducciones
 
     # TODO: todo a redshift
+
+
+if __name__ == "__main__":
+    main()
