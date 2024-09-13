@@ -5,9 +5,10 @@ from itertools import chain
 from datetime import datetime
 
 
-def process_artist(name, key, argartists, index):
+def process_artist(tag, name, key, argartists, index):
     artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
     artist = {col: artist.json()['artist'][col] for col in artist.json()['artist'] if col in ('name', 'stats')}
+    artist['tag'] = tag
     artist['listeners'] = artist['stats']['listeners']
     artist['playcount'] = artist['stats']['playcount']
     artist['rank'] = argartists.loc[index, 'rank']
@@ -61,19 +62,24 @@ def main():
         creds = json.load(creds)
         key = creds.get('key')
 
-    tag = 'heavy+metal'
+    tags = ['heavy+metal', 'thrash+metal', 'industrial+metal', 'progressive+metal', 'power+metal', 'death+metal', 'deathcore']
+    alltagartists = pd.DataFrame()
 
-    tagartists = pd.DataFrame(requests.get(f'https://ws.audioscrobbler.com/2.0/?method=tag.getTopArtists&tag={tag}&api_key={key}&format=json').json()['topartists']['artist'])[['name', 'url', 'mbid']].reset_index(names='rank')
-    tagartists['rank'] = tagartists['rank'] + 1
+    for tag in tags:
+        tagartists = pd.DataFrame(requests.get(f'https://ws.audioscrobbler.com/2.0/?method=tag.getTopArtists&tag={tag}&api_key={key}&format=json').json()['topartists']['artist'])[['name', 'url', 'mbid']].reset_index(names='rank')
+        tagartists['rank'] = tagartists['rank'] + 1
+        tagartists['tag'] = tag
+        alltagartists = pd.concat([alltagartists, tagartists])
 
     artistfact = []
     albumbsfact = []
     tracksfact = []
 
-    for index, artist in tagartists.iterrows():
+    for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
+        tag = artist['tag'].replace('+', ' ').title()
 
-        artistfact.append(process_artist(name, key, tagartists, index))
+        artistfact.append(process_artist(tag, name, key, tagartists, index))
         albumbsfact.append(process_albums(name, key, tagartists, index))
         tracksfact.append(process_tracks(name, key, tagartists, index))
 
