@@ -91,9 +91,9 @@ def main():
 
     print(artistfact)
 
-    # TODO: Actualizar DIM con top tema, top album, top rank, nuevos valores de listeners y reproducciones
-
-    # TODO: todo a redshift
+    # TODO: Si artista/tag existe en la DIM, reemplazar nombres por IDs
+    # TODO: Si no existe, crear ID, agregar en DIM, reemplazar en FACT
+    # TODO: Crear tablas
 
 
 if __name__ == "__main__":
