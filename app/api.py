@@ -6,18 +6,13 @@ from datetime import datetime
 
 
 def process_artist(name, key, argartists, index):
-    try:
-        artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
-        artist = {col: artist.json()['artist'][col] for col in artist.json()['artist'] if col in ('name', 'stats')}
-        artist['listeners'] = artist['stats']['listeners']
-        artist['playcount'] = artist['stats']['playcount']
-        artist['rank'] = argartists.loc[index, 'rank']
-        artist['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
-
-        del artist['stats']
-
-    except Exception:
-        return None
+    artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
+    artist = {col: artist.json()['artist'][col] for col in artist.json()['artist'] if col in ('name', 'stats')}
+    artist['listeners'] = artist['stats']['listeners']
+    artist['playcount'] = artist['stats']['playcount']
+    artist['rank'] = argartists.loc[index, 'rank']
+    artist['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    del artist['stats']
 
     return artist
 
@@ -33,18 +28,13 @@ def process_tracks(name, key, argartists, index):
 
 
 def process_track(i, tracks, name):
-    try:
-        track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
+    track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
+    track['rank'] = track['@attr']['rank']
+    track['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    track['artist'] = name
+    del track['@attr']
 
-        track['rank'] = track['@attr']['rank']
-        track['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
-        track['artist'] = name
-        del track['@attr']
-
-        return track
-
-    except Exception:
-        return None
+    return track
 
 
 def process_albums(name, key, argartists, index):
@@ -58,16 +48,11 @@ def process_albums(name, key, argartists, index):
 
 
 def process_album(i, albums, name):
-    try:
-        album = {col: albums.json()['topalbums']['album'][i][col] for col in albums.json()['topalbums']['album'][i] if col in ('name', 'playcount')}
+    album = {col: albums.json()['topalbums']['album'][i][col] for col in albums.json()['topalbums']['album'][i] if col in ('name', 'playcount')}
+    album['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    album['artist'] = name
 
-        album['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
-        album['artist'] = name
-
-        return album
-
-    except Exception:
-        return None
+    return album
 
 
 def main():
