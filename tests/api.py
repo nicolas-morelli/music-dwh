@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
-import pandas as pd
 from datetime import datetime
+import pandas as pd
 from scripts.api import process_artist, process_tracks, process_albums, process_track, process_album
 
 
@@ -34,7 +34,7 @@ class TestLastFmProcessing(unittest.TestCase):
 
         result = process_tracks('Kublai Khan TX', self.key, self.tagartists, 0)
 
-        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': '1', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX' },
+        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': '1', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'},
                     {'name': 'No Kin', 'playcount': '4000000', 'listeners': '800000', 'rank': '2', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}]
 
         self.assertEqual(result, expected)

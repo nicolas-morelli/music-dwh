@@ -1,8 +1,8 @@
 import json
-import requests
-import pandas as pd
 from itertools import chain
 from datetime import datetime
+import requests
+import pandas as pd
 
 
 def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int) -> pd.DataFrame:
