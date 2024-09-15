@@ -1,7 +1,10 @@
-import json
+import yaml
+import logging
 from itertools import chain
 from datetime import datetime
 import requests
+import redshift_connector
+import awswrangler as wr
 import pandas as pd
 
 
@@ -125,10 +128,17 @@ def process_album(i: int, albums: requests.Response, name: str) -> pd.DataFrame:
 
 
 def main():
-    # Leo credenciales de Last.fm de JSON
-    with open('creds.json', 'r') as creds:
-        creds = json.load(creds)
-        key = creds.get('key')
+    logging.info('Starting.')
+
+    with open('.env/.cfg/creds.yaml', 'r') as creds:
+        creds = yaml.safe_load(creds)
+        host = creds['redshift']['host']
+        port = creds['redshift']['port']
+        db = creds['redshift']['db']
+        user = creds['redshift']['user']
+        password = creds['redshift']['password']
+        key = creds['lastfm']['key']
+    logging.info('Credentials read.')
 
     tags = ['heavy+metal', 'thrash+metal', 'industrial+metal', 'progressive+metal', 'power+metal', 'death+metal', 'deathcore']
     alltagartists = pd.DataFrame()
@@ -138,31 +148,41 @@ def main():
         tagartists['rank'] = tagartists['rank'] + 1
         tagartists['tag'] = tag
         alltagartists = pd.concat([alltagartists, tagartists])
+    logging.info('Artists read.')
 
-    artistfact = []
-    albumbsfact = []
-    tracksfact = []
+    artistdaily = []
+    albumbsdaily = []
+    tracksdaily = []
 
     for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
         tag = artist['tag'].replace('+', ' ').title()
 
-        artistfact.append(process_artist(tag, name, key, tagartists, index))
-        albumbsfact.append(process_albums(name, key, tagartists, index))
-        tracksfact.append(process_tracks(name, key, tagartists, index))
+        artistdaily.append(process_artist(tag, name, key, tagartists, index))
+        albumbsdaily.append(process_albums(name, key, tagartists, index))
+        tracksdaily.append(process_tracks(name, key, tagartists, index))
+        logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read.')
+    logging.info('Data ready.')
 
-    artistfact = pd.DataFrame(artistfact)
-    albumbsfact = list(chain(*albumbsfact))
-    albumbsfact = pd.DataFrame(albumbsfact)
-    tracksfact = list(chain(*tracksfact))
-    tracksfact = pd.DataFrame(tracksfact)
+    artistdaily = pd.DataFrame(artistdaily)
+    albumbsdaily = list(chain(*albumbsdaily))
+    albumbsdaily = pd.DataFrame(albumbsdaily)
+    tracksdaily = list(chain(*tracksdaily))
+    tracksdaily = pd.DataFrame(tracksdaily)
+    logging.info('Dataframes ready.')
 
-    print(artistfact)
+    conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
 
-    # TODO: Si artista/tag existe en la DIM, reemplazar nombres por IDs
-    # TODO: Si no existe, crear ID, agregar en DIM, reemplazar en FACT
-    # TODO: Crear tablas
+    wr.redshift.to_sql(df=artistdaily, con=conn, table='daily_artists', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    logging.info('Daily artists loaded.')
+
+    wr.redshift.to_sql(df=albumbsdaily, con=conn, table='daily_albums', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    logging.info('Daily albums loaded.')
+
+    wr.redshift.to_sql(df=tracksdaily, con=conn, table='daily_tracks', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    logging.info('Daily tracks loaded.')
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler()])
     main()
