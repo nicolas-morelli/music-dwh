@@ -1,4 +1,4 @@
-name: Tests
+name: Tests GHA
 
 on:
   pull_request:

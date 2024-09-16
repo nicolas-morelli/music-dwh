@@ -30,7 +30,7 @@ def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: 
     artist['tag'] = tag
     artist['listeners'] = artist['stats']['listeners']
     artist['playcount'] = artist['stats']['playcount']
-    artist['rank'] = artists.loc[index, 'rank']
+    artist['rank'] = artists.at[index, 'rank']
     artist['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
     del artist['stats']
 
@@ -56,7 +56,7 @@ def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     tracklist = []
 
     for i in range(0, len(tracks.json()['toptracks']['track'])):
-        tracklist.append(process_track(i, tracks, artists.loc[index, 'name']))
+        tracklist.append(process_track(i, tracks, artists.at[index, 'name']))
 
     return tracklist
 
@@ -75,9 +75,11 @@ def process_track(i: int, tracks: requests.Response, name: str) -> pd.DataFrame:
     """
 
     track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
-    track['rank'] = track['@attr']['rank']
+    track['rank'] = int(track['@attr']['rank'])
     track['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
     track['artist'] = name
+    track['name'] = track['name'][:80] + ('...' if len(track['name']) > 80 else '')
+
     del track['@attr']
 
     return track
@@ -102,7 +104,7 @@ def process_albums(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     albumlist = []
 
     for i in range(0, len(albums.json()['topalbums']['album'])):
-        albumlist.append(process_album(i, albums, artists.loc[index, 'name']))
+        albumlist.append(process_album(i, albums, artists.at[index, 'name']))
 
     return albumlist
 
@@ -140,7 +142,18 @@ def main():
         key = creds['lastfm']['key']
     logging.info('Credentials read.')
 
-    tags = ['heavy+metal', 'thrash+metal', 'industrial+metal', 'progressive+metal', 'power+metal', 'death+metal', 'deathcore']
+    tags = ['heavy+metal',
+            'thrash+metal',
+            'nu+metal',
+            'black+metal',
+            'doom+metal',
+            'industrial+metal',
+            'progressive+metal',
+            'power+metal',
+            'symphonic+metal',
+            'folk+metal',
+            'death+metal',
+            'deathcore']
     alltagartists = pd.DataFrame()
 
     for tag in tags:
@@ -148,6 +161,7 @@ def main():
         tagartists['rank'] = tagartists['rank'] + 1
         tagartists['tag'] = tag
         alltagartists = pd.concat([alltagartists, tagartists])
+    alltagartists = alltagartists.reset_index(drop=True)
     logging.info('Artists read.')
 
     artistdaily = []
@@ -158,28 +172,26 @@ def main():
         name = artist['name'].replace('&', '').replace(' ', '+')
         tag = artist['tag'].replace('+', ' ').title()
 
-        artistdaily.append(process_artist(tag, name, key, tagartists, index))
-        albumbsdaily.append(process_albums(name, key, tagartists, index))
-        tracksdaily.append(process_tracks(name, key, tagartists, index))
-        logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read.')
+        artistdaily.append(process_artist(tag, name, key, alltagartists, index))
+        albumbsdaily.append(process_albums(name, key, alltagartists, index))
+        tracksdaily.append(process_tracks(name, key, alltagartists, index))
+        logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 
-    artistdaily = pd.DataFrame(artistdaily)
-    albumbsdaily = list(chain(*albumbsdaily))
-    albumbsdaily = pd.DataFrame(albumbsdaily)
-    tracksdaily = list(chain(*tracksdaily))
-    tracksdaily = pd.DataFrame(tracksdaily)
+    dfartistdaily = pd.DataFrame(artistdaily)
+    dfalbumbsdaily = pd.DataFrame(list(chain(*albumbsdaily)))
+    dftracksdaily = pd.DataFrame(list(chain(*tracksdaily)))
     logging.info('Dataframes ready.')
 
     conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
 
-    wr.redshift.to_sql(df=artistdaily, con=conn, table='daily_artists', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    wr.redshift.to_sql(df=dfartistdaily, con=conn, table='daily_artists', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
     logging.info('Daily artists loaded.')
 
-    wr.redshift.to_sql(df=albumbsdaily, con=conn, table='daily_albums', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    wr.redshift.to_sql(df=dfalbumbsdaily, con=conn, table='daily_albums', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
     logging.info('Daily albums loaded.')
 
-    wr.redshift.to_sql(df=tracksdaily, con=conn, table='daily_tracks', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+    wr.redshift.to_sql(df=dftracksdaily, con=conn, table='daily_tracks', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
     logging.info('Daily tracks loaded.')
 
 
