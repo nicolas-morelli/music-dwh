@@ -1,3 +1,4 @@
+import os
 import yaml
 import logging
 from itertools import chain
@@ -6,6 +7,13 @@ import requests
 import redshift_connector
 import awswrangler as wr
 import pandas as pd
+
+# TODO: ver de pasar el main a varias funciones para Airflow
+# Pasando los artistas a Parquet, lo que esta dentro del for podrian ser cada uno una funcion y pueden correr en paralelo
+
+# TODO: Usar XCOM para los nombres de Parquet
+
+""" AUX FUNCTIONS """
 
 
 def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int) -> pd.DataFrame:
@@ -129,10 +137,131 @@ def process_album(i: int, albums: requests.Response, name: str) -> pd.DataFrame:
     return album
 
 
+def load_df_and_to_redshift(func):
+    def wrapper(*args, **kwargs):
+        pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
+
+        with open(pathcreds, 'r') as creds:
+            creds = yaml.safe_load(creds)
+            host = creds['redshift']['host']
+            port = creds['redshift']['port']
+            db = creds['redshift']['db']
+            user = creds['redshift']['user']
+            password = creds['redshift']['password']
+            key = creds['lastfm']['key']
+            logging.info('Credentials read.')
+
+        alltagartists = pd.read_parquet(kwargs['ti'].xcom_pull(task_ids='extract_artists'))
+
+        kwargs['key'] = key
+        kwargs['alltagartists'] = alltagartists
+
+        table_name = kwargs['table_name']
+
+        df_api = func(*args, **kwargs)
+
+        conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+        logging.info(f'{table_name} loaded.')
+        return
+
+    return wrapper
+
+
+""" DAG FUNCTIONS """
+
+
+def extract_artists() -> str:
+    pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
+
+    with open(pathcreds, 'r') as creds:
+        creds = yaml.safe_load(creds)
+        key = creds['lastfm']['key']
+        logging.info('Credentials read.')
+
+    tags = ['heavy+metal',
+            'thrash+metal',
+            'nu+metal',
+            'black+metal',
+            'doom+metal',
+            'industrial+metal',
+            'progressive+metal',
+            'power+metal',
+            'symphonic+metal',
+            'folk+metal',
+            'death+metal',
+            'deathcore']
+    alltagartists = pd.DataFrame()
+
+    for tag in tags:
+        tagartists = pd.DataFrame(requests.get(f'https://ws.audioscrobbler.com/2.0/?method=tag.getTopArtists&tag={tag}&api_key={key}&format=json').json()['topartists']['artist'])[['name', 'url', 'mbid']].reset_index(names='rank')
+        tagartists['rank'] = tagartists['rank'] + 1
+        tagartists['tag'] = tag
+        alltagartists = pd.concat([alltagartists, tagartists])
+    alltagartists = alltagartists.reset_index(drop=True)
+
+    artist_path = os.path.join(os.getcwd(), datetime.now().strftime('%Y-%m-%d') + '-ARTISTS.parquet')  # TODO: No usar, usar el del context de Airflow
+
+    alltagartists.to_parquet(artist_path)
+
+    return artist_path
+
+
+@load_df_and_to_redshift
+def etl_artist_data(**kwargs):
+    alltagartists = kwargs['alltagartists']
+    key = kwargs['key']
+
+    artistdaily = []
+    for index, artist in alltagartists.iterrows():
+        name = artist['name'].replace('&', '').replace(' ', '+')
+        tag = artist['tag'].replace('+', ' ').title()
+
+        artistdaily.append(process_artist(tag, name, key, alltagartists, index))
+        logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
+    logging.info('Data ready.')
+
+    return pd.DataFrame(artistdaily)
+
+
+@load_df_and_to_redshift
+def etl_track_data(**kwargs):
+    alltagartists = kwargs['alltagartists']
+    key = kwargs['key']
+
+    tracksdaily = []
+    for index, artist in alltagartists.iterrows():
+        name = artist['name'].replace('&', '').replace(' ', '+')
+        tag = artist['tag'].replace('+', ' ').title()
+
+        tracksdaily.append(process_artist(tag, name, key, alltagartists, index))
+        logging.info(f'{round(100 * len(tracksdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
+    logging.info('Data ready.')
+
+    return pd.DataFrame(list(chain(*tracksdaily)))
+
+
+@load_df_and_to_redshift
+def etl_album_data(**kwargs):
+    alltagartists = kwargs['alltagartists']
+    key = kwargs['key']
+
+    albumbsdaily = []
+    for index, artist in alltagartists.iterrows():
+        name = artist['name'].replace('&', '').replace(' ', '+')
+        tag = artist['tag'].replace('+', ' ').title()
+
+        albumbsdaily.append(process_artist(tag, name, key, alltagartists, index))
+        logging.info(f'{round(100 * len(albumbsdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
+    logging.info('Data ready.')
+
+    return pd.DataFrame(list(chain(*albumbsdaily)))
+
+
 def main():
     logging.info('Starting.')
 
-    with open('.env/.cfg/creds.yaml', 'r') as creds:
+    with open('airflow/.env/.cfg/creds.yaml', 'r') as creds:
         creds = yaml.safe_load(creds)
         host = creds['redshift']['host']
         port = creds['redshift']['port']
