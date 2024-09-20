@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 import pandas as pd
-from airflow.apifunctions.api import process_artist, process_tracks, process_albums, process_track, process_album
+from dags.apifunctions.api import process_artist, process_tracks, process_albums, process_track, process_album
 
 
 class TestLastFmProcessing(unittest.TestCase):
