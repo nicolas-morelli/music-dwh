@@ -8,10 +8,6 @@ import redshift_connector
 import awswrangler as wr
 import pandas as pd
 
-# TODO: ver de pasar el main a varias funciones para Airflow
-# Pasando los artistas a Parquet, lo que esta dentro del for podrian ser cada uno una funcion y pueden correr en paralelo
-
-# TODO: Usar XCOM para los nombres de Parquet
 
 """ AUX FUNCTIONS """
 
@@ -256,74 +252,3 @@ def etl_album_data(**kwargs):
     logging.info('Data ready.')
 
     return pd.DataFrame(list(chain(*albumbsdaily)))
-
-
-def main():
-    logging.info('Starting.')
-
-    with open('airflow/.env/.cfg/creds.yaml', 'r') as creds:
-        creds = yaml.safe_load(creds)
-        host = creds['redshift']['host']
-        port = creds['redshift']['port']
-        db = creds['redshift']['db']
-        user = creds['redshift']['user']
-        password = creds['redshift']['password']
-        key = creds['lastfm']['key']
-    logging.info('Credentials read.')
-
-    tags = ['heavy+metal',
-            'thrash+metal',
-            'nu+metal',
-            'black+metal',
-            'doom+metal',
-            'industrial+metal',
-            'progressive+metal',
-            'power+metal',
-            'symphonic+metal',
-            'folk+metal',
-            'death+metal',
-            'deathcore']
-    alltagartists = pd.DataFrame()
-
-    for tag in tags:
-        tagartists = pd.DataFrame(requests.get(f'https://ws.audioscrobbler.com/2.0/?method=tag.getTopArtists&tag={tag}&api_key={key}&format=json').json()['topartists']['artist'])[['name', 'url', 'mbid']].reset_index(names='rank')
-        tagartists['rank'] = tagartists['rank'] + 1
-        tagartists['tag'] = tag
-        alltagartists = pd.concat([alltagartists, tagartists])
-    alltagartists = alltagartists.reset_index(drop=True)
-    logging.info('Artists read.')
-
-    artistdaily = []
-    albumbsdaily = []
-    tracksdaily = []
-
-    for index, artist in alltagartists.iterrows():
-        name = artist['name'].replace('&', '').replace(' ', '+')
-        tag = artist['tag'].replace('+', ' ').title()
-
-        artistdaily.append(process_artist(tag, name, key, alltagartists, index))
-        albumbsdaily.append(process_albums(name, key, alltagartists, index))
-        tracksdaily.append(process_tracks(name, key, alltagartists, index))
-        logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
-    logging.info('Data ready.')
-
-    dfartistdaily = pd.DataFrame(artistdaily)
-    dfalbumbsdaily = pd.DataFrame(list(chain(*albumbsdaily)))
-    dftracksdaily = pd.DataFrame(list(chain(*tracksdaily)))
-    logging.info('Dataframes ready.')
-
-    conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
-
-    wr.redshift.to_sql(df=dfartistdaily, con=conn, table='daily_artists', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
-    logging.info('Daily artists loaded.')
-
-    wr.redshift.to_sql(df=dfalbumbsdaily, con=conn, table='daily_albums', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
-    logging.info('Daily albums loaded.')
-
-    wr.redshift.to_sql(df=dftracksdaily, con=conn, table='daily_tracks', schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
-    logging.info('Daily tracks loaded.')
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler()])
-    main()

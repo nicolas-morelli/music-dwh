@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 default_args = {
     'owner': 'Domingo Morelli',
     'depends_on_past': False,
-    'start_date': datetime(2024, 9, 17),
+    'start_date': datetime(2024, 9, 19),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 5,
@@ -17,7 +17,7 @@ with DAG(
     'music_dwh',
     default_args=default_args,
     description='',
-    schedule_interval='@daily',
+    schedule_interval='00 12 * * *',
     catchup=False,
 ) as dag:
 
