@@ -29,7 +29,7 @@ jobs:
           
       - name: Tests
         run: |
-          for test_file in $(find ./tests -name "*.py"); do
+          for test_file in $(find .airflow/tests -name "*.py"); do
             echo "Running $test_file"
             python $test_file
           done
