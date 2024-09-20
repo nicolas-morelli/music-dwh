@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='music-dwh',
+    name='music_dwh',
     version='0.1.0',
     author='Domingo Morelli',
     author_email='nicomorelli47@gmail.com',
