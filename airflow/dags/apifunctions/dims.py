@@ -8,14 +8,14 @@ import pandas as pd
 
 
 def handle_new(daily, type):
-    daily = daily.rename(columns={'name': 'artist_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
+    daily = daily.rename(columns={'name': type + '_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
     daily['max_rank'] = daily['current_rank']
     daily['new_listeners'] = daily['listeners']
     daily['new_plays'] = daily['playcount']
     daily['expiration_date'] = '9999-12-31'
     daily['last_known'] = 'Yes'
 
-    if type == 'artists':
+    if type == 'artist':
         daily['consecutive_times_in_top_50'] = 1
 
     return daily
@@ -32,7 +32,7 @@ def handle_repeated(daily, type):
     daily['effective_date'] = daily['effective_date_daily']
     daily['artist_tag'] = daily['artist_tag_daily']
 
-    if type == 'artists':
+    if type == 'artist':
         daily['consecutive_times_in_top_50'] += 1
 
     cols_to_drop = []
@@ -116,9 +116,9 @@ def artist_dim(*args, **kwargs):
             daily_repeated_artists = daily.merge(artists, on='artist_name', how='inner', suffixes=['_daily', '_old'])
             daily_out_artists = artists[~artists['artist_name'].isin(daily['artist_name'])]
 
-            daily_new_artists = handle_new(daily_new_artists, type='artists')
-            daily_repeated_artists = handle_repeated(daily_repeated_artists, type='artists')
-            daily_out_artists = handle_out(daily_out_artists, type='artists')
+            daily_new_artists = handle_new(daily_new_artists, type='artist')
+            daily_repeated_artists = handle_repeated(daily_repeated_artists, type='artist')
+            daily_out_artists = handle_out(daily_out_artists, type='artist')
 
             daily_new_artists['artist_id'] = pd.NA
 
@@ -183,7 +183,7 @@ def tracks_dim(*args, **kwargs):
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = {datetime.now().strftime('%Y-%m-%d')}
-                            WHERE last_known = 'Yes' AND track_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."{table_name}" da ON da.artist_name = dt.artist)
+                            WHERE last_known = 'Yes' AND track_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" da ON da.artist_name = dt.artist)
                         """)
             conn.commit()
 
@@ -196,9 +196,9 @@ def tracks_dim(*args, **kwargs):
             daily_repeated_tracks = daily.merge(tracks, on='track_name', how='inner', suffixes=['_daily', '_old'])
             daily_out_tracks = tracks[~tracks['track_name'].isin(daily['track_name'])]
 
-            daily_new_tracks = handle_new(daily_new_tracks, type='tracks')
-            daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='tracks')
-            daily_out_tracks = handle_out(daily_out_tracks, type='tracks')
+            daily_new_tracks = handle_new(daily_new_tracks, type='track')
+            daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='track')
+            daily_out_tracks = handle_out(daily_out_tracks, type='track')
 
             daily_new_tracks['track_id'] = pd.NA
 
@@ -236,14 +236,14 @@ def tracks_dim(*args, **kwargs):
 
             daily = cur.fetch_dataframe()
 
-            daily = handle_new(daily, type='tracks')
+            daily = handle_new(daily, type='track')
             daily = daily.drop_duplicates().reset_index(names='track_id')
 
-        with conn.cursor() as cur:
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
-            artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
+    with conn.cursor() as cur:
+        cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+        artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
-        daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
+    daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
 
     return daily
 
