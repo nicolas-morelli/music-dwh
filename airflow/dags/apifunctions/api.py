@@ -155,9 +155,10 @@ def load_df_and_to_redshift(func):
         table_name = kwargs['table_name']
 
         df_api = func(*args, **kwargs)
-
+        logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', index=False)
+        logging.info('Creating table.')
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', lock=True, index=False)
         logging.info(f'{table_name} loaded.')
         return
 
@@ -228,9 +229,8 @@ def etl_track_data(**kwargs):
     tracksdaily = []
     for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
-        tag = artist['tag'].replace('+', ' ').title()
 
-        tracksdaily.append(process_artist(tag, name, key, alltagartists, index))
+        tracksdaily.append(process_tracks(name, key, alltagartists, index))
         logging.info(f'{round(100 * len(tracksdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 
@@ -245,9 +245,8 @@ def etl_album_data(**kwargs):
     albumbsdaily = []
     for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
-        tag = artist['tag'].replace('+', ' ').title()
 
-        albumbsdaily.append(process_artist(tag, name, key, alltagartists, index))
+        albumbsdaily.append(process_albums(name, key, alltagartists, index))
         logging.info(f'{round(100 * len(albumbsdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 
