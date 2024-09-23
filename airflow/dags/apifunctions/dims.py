@@ -8,10 +8,15 @@ import pandas as pd
 
 
 def handle_new(daily, type):
-    daily = daily.rename(columns={'name': type + '_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
-    daily['max_rank'] = daily['current_rank']
-    daily['new_listeners'] = daily['listeners']
-    daily['new_plays'] = daily['playcount']
+    if type == 'album':
+        daily = daily.rename(columns={'name': type + '_name', 'stats_date': 'effective_date'})
+        daily['new_plays'] = daily['playcount']
+    else:
+        daily = daily.rename(columns={'name': type + '_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
+        daily['max_rank'] = daily['current_rank']
+        daily['new_listeners'] = daily['listeners']
+        daily['new_plays'] = daily['playcount']
+
     daily['expiration_date'] = '9999-12-31'
     daily['last_known'] = 'Yes'
 
@@ -22,17 +27,22 @@ def handle_new(daily, type):
 
 
 def handle_repeated(daily, type):
-    daily['new_plays'] = daily['playcount_daily'].astype(int) - daily['playcount_old'].astype(int).fillna(0)
-    daily['playcount'] = daily['playcount_daily'].astype(int)
-    daily['new_listeners'] = daily['listeners_daily'].astype(int) - daily['listeners_old'].astype(int).fillna(0)
-    daily['listeners'] = daily['listeners_daily'].astype(int)
-    daily['max_rank'] = daily[['current_rank_daily', 'max_rank']].astype(int).min(axis=1)
-    daily['current_rank'] = daily['current_rank_daily'].astype(int)
+    if type == 'album':
+        daily['new_plays'] = daily['playcount_daily'].astype(int) - daily['playcount_old'].astype(int).fillna(0)
+        daily['playcount'] = daily['playcount_daily'].astype(int)
+    else:
+        daily['new_plays'] = daily['playcount_daily'].astype(int) - daily['playcount_old'].astype(int).fillna(0)
+        daily['playcount'] = daily['playcount_daily'].astype(int)
+        daily['new_listeners'] = daily['listeners_daily'].astype(int) - daily['listeners_old'].astype(int).fillna(0)
+        daily['listeners'] = daily['listeners_daily'].astype(int)
+        daily['max_rank'] = daily[['current_rank_daily', 'max_rank']].astype(int).min(axis=1)
+        daily['current_rank'] = daily['current_rank_daily'].astype(int)
+
     daily['expiration_date'] = '9999-12-31'
     daily['effective_date'] = daily['effective_date_daily']
-    daily['artist_tag'] = daily['artist_tag_daily']
 
     if type == 'artist':
+        daily['artist_tag'] = daily['artist_tag_daily']
         daily['consecutive_times_in_top_50'] += 1
 
     cols_to_drop = []
@@ -47,9 +57,12 @@ def handle_repeated(daily, type):
 
 
 def handle_out(daily, type):
-    daily['new_listeners'] = 0
     daily['new_plays'] = 0
-    daily['current_rank'] = pd.NA
+
+    if not type == 'album':
+        daily['new_listeners'] = 0
+        daily['current_rank'] = pd.NA
+
     daily = daily.drop('id', axis=1)
 
     return daily
@@ -102,7 +115,7 @@ def artist_dim(*args, **kwargs):
 
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
-                                expiration_date = {datetime.now().strftime('%Y-%m-%d')}
+                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
                             WHERE last_known = 'Yes' AND artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily")
                         """)
             conn.commit()
@@ -182,7 +195,7 @@ def tracks_dim(*args, **kwargs):
 
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
-                                expiration_date = {datetime.now().strftime('%Y-%m-%d')}
+                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
                             WHERE last_known = 'Yes' AND track_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" da ON da.artist_name = dt.artist)
                         """)
             conn.commit()
@@ -202,7 +215,7 @@ def tracks_dim(*args, **kwargs):
 
             daily_new_tracks['track_id'] = pd.NA
 
-            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True)
+            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
 
             max_id = daily['track_id'].fillna(-1).astype(int).max()
 
@@ -239,11 +252,89 @@ def tracks_dim(*args, **kwargs):
             daily = handle_new(daily, type='track')
             daily = daily.drop_duplicates().reset_index(names='track_id')
 
-    with conn.cursor() as cur:
-        cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
-        artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
+            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
-    daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
+        daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
+
+    return daily
+
+
+@from_redshift_to_redshift
+def albums_dim(*args, **kwargs):
+    conn = kwargs['conn']
+    table_name = kwargs['table_name']
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+
+                        SELECT *
+                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                        WHERE last_known = 'Yes'
+
+                        """)
+            tracks = cur.fetch_dataframe()
+
+            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            SET last_known = 'No',
+                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
+                            WHERE last_known = 'Yes' AND album_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" da ON da.artist_name = dt.artist)
+                        """)
+            conn.commit()
+
+            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
+            daily = cur.fetch_dataframe()
+
+            daily = daily.rename(columns={'name': 'album_name', 'stats_date': 'effective_date'})
+
+            daily_new_tracks = daily[~daily['album_name'].isin(tracks['album_name'])]
+            daily_repeated_tracks = daily.merge(tracks, on='album_name', how='inner', suffixes=['_daily', '_old'])
+            daily_out_tracks = tracks[~tracks['album_name'].isin(daily['album_name'])]
+
+            daily_new_tracks = handle_new(daily_new_tracks, type='album')
+            daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='album')
+            daily_out_tracks = handle_out(daily_out_tracks, type='album')
+
+            daily_new_tracks['album_id'] = pd.NA
+
+            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
+
+            max_id = daily['album_id'].fillna(-1).astype(int).max()
+
+            for index, _ in daily[daily['album_id'].isna()].iterrows():
+                daily.loc[index, 'album_id'] = max_id + 1
+                max_id += 1
+
+    except redshift_connector.error.ProgrammingError:
+        with conn.cursor() as cur:
+            conn.commit()
+            cur.execute(f"""
+                            CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            (
+                              id INTEGER IDENTITY(1, 1),
+                              album_id INTEGER,
+                              artist_id INTEGER,
+                              album_name VARCHAR,
+                              playcount INTEGER,
+                              new_plays INTEGER,
+                              effective_date VARCHAR,
+                              expiration_date VARCHAR,
+                              last_known VARCHAR
+                            )
+
+                        """)
+            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
+
+            daily = cur.fetch_dataframe()
+
+            daily = handle_new(daily, type='album')
+            daily = daily.drop_duplicates().reset_index(names='album_id')
+
+            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
+
+        daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
 
     return daily
 
