@@ -17,11 +17,11 @@ def handle_new(daily, type):
         daily['new_listeners'] = daily['listeners']
         daily['new_plays'] = daily['playcount']
 
-    daily['expiration_date'] = '9999-12-31'
-    daily['last_known'] = 'Yes'
-
     if type == 'artist':
         daily['consecutive_times_in_top_50'] = 1
+
+    daily['expiration_date'] = '9999-12-31'
+    daily['last_known'] = 'Yes'
 
     return daily
 
@@ -62,6 +62,8 @@ def handle_out(daily, type):
     if not type == 'album':
         daily['new_listeners'] = 0
         daily['current_rank'] = pd.NA
+
+    daily['effective_date'] = datetime.now().strftime('%Y-%m-%d')
 
     daily = daily.drop('id', axis=1)
 
@@ -116,7 +118,8 @@ def artist_dim(*args, **kwargs):
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes' AND artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily")
+                            WHERE last_known = 'Yes' 
+                                AND current_rank IS NOT NULL
                         """)
             conn.commit()
 
@@ -137,7 +140,9 @@ def artist_dim(*args, **kwargs):
 
             daily = pd.concat([daily_new_artists, daily_repeated_artists, daily_out_artists]).reset_index(drop=True)
 
-            max_id = daily['artist_id'].fillna(-1).astype(int).max()
+            cur.execute(f'SELECT MAX(artist_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+
+            max_id = cur.fetch_dataframe().iloc[0, 0]
 
             for index, _ in daily[daily['artist_id'].isna()].iterrows():
                 daily.loc[index, 'artist_id'] = max_id + 1
@@ -171,8 +176,10 @@ def artist_dim(*args, **kwargs):
 
             daily = cur.fetch_dataframe()
 
-            daily = handle_new(daily, type='artists')
-            daily = daily.drop('tag', axis=1).drop_duplicates().reset_index(names='artist_id')
+            daily = daily.rename(columns={'name': 'artist_name', 'rank': 'current_rank', 'stats_date': 'effective_date', 'tag': 'artist_tag'})
+
+            daily = handle_new(daily, type='artist')
+            daily = daily.drop_duplicates().reset_index(names='artist_id')
 
     return daily
 
@@ -196,7 +203,8 @@ def tracks_dim(*args, **kwargs):
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes' AND track_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" da ON da.artist_name = dt.artist)
+                            WHERE last_known = 'Yes'
+                                AND current_rank IS NOT NULL
                         """)
             conn.commit()
 
@@ -217,7 +225,9 @@ def tracks_dim(*args, **kwargs):
 
             daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
 
-            max_id = daily['track_id'].fillna(-1).astype(int).max()
+            cur.execute(f'SELECT MAX(track_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+
+            max_id = cur.fetch_dataframe().iloc[0, 0]
 
             for index, _ in daily[daily['track_id'].isna()].iterrows():
                 daily.loc[index, 'track_id'] = max_id + 1
@@ -279,7 +289,7 @@ def albums_dim(*args, **kwargs):
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes' AND album_name || artist_id IN (SELECT DISTINCT dt.name || CAST(da.artist_id AS VARCHAR(255)) FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily" dt JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" da ON da.artist_name = dt.artist)
+                            WHERE last_known = 'Yes'
                         """)
             conn.commit()
 
@@ -300,7 +310,9 @@ def albums_dim(*args, **kwargs):
 
             daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
 
-            max_id = daily['album_id'].fillna(-1).astype(int).max()
+            cur.execute(f'SELECT MAX(album_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+
+            max_id = cur.fetch_dataframe().iloc[0, 0]
 
             for index, _ in daily[daily['album_id'].isna()].iterrows():
                 daily.loc[index, 'album_id'] = max_id + 1
