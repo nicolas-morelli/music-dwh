@@ -98,7 +98,6 @@ def from_redshift_to_redshift(func):
     return wrapper
 
 
-# TODO: Cuando ya haya pensado logica, sumarle TOP track, TOP album y tag tal vez
 @from_redshift_to_redshift
 def artist_dim(*args, **kwargs):
     conn = kwargs['conn']
@@ -118,8 +117,9 @@ def artist_dim(*args, **kwargs):
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes' 
-                                AND current_rank IS NOT NULL
+                            WHERE last_known = 'Yes'
+                                AND (current_rank IS NOT NULL
+                                    OR artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"))
                         """)
             conn.commit()
 
@@ -129,7 +129,7 @@ def artist_dim(*args, **kwargs):
             daily = daily.rename(columns={'name': 'artist_name', 'rank': 'current_rank', 'stats_date': 'effective_date', 'tag': 'artist_tag'})
 
             daily_new_artists = daily[~daily['artist_name'].isin(artists['artist_name'])]
-            daily_repeated_artists = daily.merge(artists, on='artist_name', how='inner', suffixes=['_daily', '_old'])
+            daily_repeated_artists = daily.merge(artists, on=['artist_name', 'artist_tag'], how='inner', suffixes=['_daily', '_old'])
             daily_out_artists = artists[~artists['artist_name'].isin(daily['artist_name'])]
 
             daily_new_artists = handle_new(daily_new_artists, type='artist')
@@ -138,7 +138,7 @@ def artist_dim(*args, **kwargs):
 
             daily_new_artists['artist_id'] = pd.NA
 
-            daily = pd.concat([daily_new_artists, daily_repeated_artists, daily_out_artists]).reset_index(drop=True)
+            daily = pd.concat([daily_new_artists, daily_repeated_artists, daily_out_artists]).drop_duplicates().reset_index(drop=True)
 
             cur.execute(f'SELECT MAX(artist_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -204,7 +204,9 @@ def tracks_dim(*args, **kwargs):
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
                             WHERE last_known = 'Yes'
-                                AND current_rank IS NOT NULL
+                                AND (current_rank IS NOT NULL
+                                    OR track_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"
+                                                                                            JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name))
                         """)
             conn.commit()
 
@@ -223,7 +225,7 @@ def tracks_dim(*args, **kwargs):
 
             daily_new_tracks['track_id'] = pd.NA
 
-            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
+            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).drop_duplicates().reset_index(drop=True).drop('artist', axis=1)
 
             cur.execute(f'SELECT MAX(track_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -290,6 +292,8 @@ def albums_dim(*args, **kwargs):
                             SET last_known = 'No',
                                 expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
                             WHERE last_known = 'Yes'
+                                AND album_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"
+                                                                                        JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name)
                         """)
             conn.commit()
 
@@ -308,7 +312,7 @@ def albums_dim(*args, **kwargs):
 
             daily_new_tracks['album_id'] = pd.NA
 
-            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).reset_index(drop=True).drop('artist', axis=1)
+            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).drop_duplicates().reset_index(drop=True).drop('artist', axis=1)
 
             cur.execute(f'SELECT MAX(album_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -349,12 +353,3 @@ def albums_dim(*args, **kwargs):
         daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
 
     return daily
-
-
-def tag_dim(*args, **kwargs):
-    # Tags
-    # TODO: Pruebo consulta y sino creo la tabla
-    # TODO: Me fijo los artistas, si hay alguno nuevo lo agrego y le creo un ID
-    # TODO: Con SCD 2 actualizo los dias viejos y creo el nuevo con los datos del momento
-    # Totalidad de escuchas, promedio de listeners del top 50, artista actual en el rank 1, cancion de algun artista del top 50 con mas escuchas
-    pass

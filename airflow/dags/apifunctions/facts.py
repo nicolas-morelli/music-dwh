@@ -40,10 +40,10 @@ def artist_fact(*args, **kwargs):
     with conn.cursor() as cur:
         cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
         daily = cur.fetch_dataframe()
-        cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
-        artists = cur.fetch_dataframe().rename(columns={'artist_name': 'name'})
+        cur.execute('SELECT DISTINCT artist_name, artist_id, artist_tag FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+        artists = cur.fetch_dataframe().rename(columns={'artist_name': 'name', 'artist_tag': 'tag'})
 
-    daily = daily.merge(artists, on='name', how='inner').drop(['name', 'tag'], axis=1)
+    daily = daily.merge(artists, on=['name', 'tag'], how='inner').drop(['name', 'tag'], axis=1)
 
     return daily
 

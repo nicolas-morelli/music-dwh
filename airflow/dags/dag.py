@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 default_args = {
     'owner': 'Domingo Morelli',
     'depends_on_past': False,
-    'start_date': datetime(2024, 9, 22),
+    'start_date': datetime(2024, 9, 24),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 5,
