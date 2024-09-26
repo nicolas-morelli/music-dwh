@@ -2,7 +2,6 @@ import os
 import yaml
 import logging
 from itertools import chain
-from datetime import datetime
 import requests
 import redshift_connector
 import awswrangler as wr
@@ -12,7 +11,7 @@ import pandas as pd
 """ AUX FUNCTIONS """
 
 
-def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int) -> pd.DataFrame:
+def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
     """From an artists name, gets its details from the API and turns it into a DataFrame
 
     :param tag: Tag representative of the artists according to Last.fm
@@ -25,6 +24,8 @@ def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: 
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
+    :param today: ...
+    :type today: str
     :return: Processed artist
     :rtype: pd.DataFrame
     """
@@ -35,13 +36,13 @@ def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: 
     artist['listeners'] = artist['stats']['listeners']
     artist['playcount'] = artist['stats']['playcount']
     artist['rank'] = artists.at[index, 'rank']
-    artist['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    artist['stats_date'] = today
     del artist['stats']
 
     return artist
 
 
-def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int) -> pd.DataFrame:
+def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
     """From an artists name, get its top tracks from the API and turn them into a Dataframe
 
     :param name: Artists name
@@ -52,6 +53,8 @@ def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
+    :param today: ...
+    :type today: str
     :return: Processed tracks for an artist
     :rtype: pd.DataFrame
     """
@@ -60,12 +63,12 @@ def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     tracklist = []
 
     for i in range(0, len(tracks.json()['toptracks']['track'])):
-        tracklist.append(process_track(i, tracks, artists.at[index, 'name']))
+        tracklist.append(process_track(i, tracks, artists.at[index, 'name'], today))
 
     return tracklist
 
 
-def process_track(i: int, tracks: requests.Response, name: str) -> pd.DataFrame:
+def process_track(i: int, tracks: requests.Response, name: str, today: str) -> pd.DataFrame:
     """From a dictionary of tracks and a position, process a certain track into a Dataframe
 
     :param i: Index of track
@@ -74,13 +77,15 @@ def process_track(i: int, tracks: requests.Response, name: str) -> pd.DataFrame:
     :type tracks: requests.Response
     :param name: Artists name
     :type name: str
+    :param today: ...
+    :type today: str
     :return: Processed track
     :rtype: pd.DataFrame
     """
 
     track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
     track['rank'] = int(track['@attr']['rank'])
-    track['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    track['stats_date'] = today
     track['artist'] = name
     track['name'] = track['name'][:80] + ('...' if len(track['name']) > 80 else '')
 
@@ -89,7 +94,7 @@ def process_track(i: int, tracks: requests.Response, name: str) -> pd.DataFrame:
     return track
 
 
-def process_albums(name: str, key: str, artists: pd.DataFrame, index: int) -> pd.DataFrame:
+def process_albums(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
     """From an artists name, get its top albums from the API and turn them into a Dataframe
 
     :param name: Artists name
@@ -100,6 +105,8 @@ def process_albums(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
+    :param today: ...
+    :type today: str
     :return: Processed albums for an artist
     :rtype: pd.DataFrame
     """
@@ -108,12 +115,12 @@ def process_albums(name: str, key: str, artists: pd.DataFrame, index: int) -> pd
     albumlist = []
 
     for i in range(0, len(albums.json()['topalbums']['album'])):
-        albumlist.append(process_album(i, albums, artists.at[index, 'name']))
+        albumlist.append(process_album(i, albums, artists.at[index, 'name'], today))
 
     return albumlist
 
 
-def process_album(i: int, albums: requests.Response, name: str) -> pd.DataFrame:
+def process_album(i: int, albums: requests.Response, name: str, today: str) -> pd.DataFrame:
     """From a dictionary of albums and a position, process a certain track into a Dataframe
 
     :param i: Index of album
@@ -122,12 +129,14 @@ def process_album(i: int, albums: requests.Response, name: str) -> pd.DataFrame:
     :type albums: requests.Response
     :param name: Artists name
     :type name: str
+    :param today: ...
+    :type today: str
     :return: Processed album
     :rtype: pd.DataFrame
     """
 
     album = {col: albums.json()['topalbums']['album'][i][col] for col in albums.json()['topalbums']['album'][i] if col in ('name', 'playcount')}
-    album['stats_date'] = datetime.now().strftime('%Y-%m-%d')  # TODO: No usar, usar el del context de Airflow
+    album['stats_date'] = today
     album['artist'] = name
 
     return album
@@ -169,7 +178,7 @@ def load_df_and_to_redshift(func):
 """ DAG FUNCTIONS """
 
 
-def extract_artists() -> str:
+def extract_artists(**kwargs) -> str:
     pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
 
     with open(pathcreds, 'r') as creds:
@@ -198,7 +207,7 @@ def extract_artists() -> str:
         alltagartists = pd.concat([alltagartists, tagartists])
     alltagartists = alltagartists.reset_index(drop=True)
 
-    artist_path = os.path.join(os.getcwd(), datetime.now().strftime('%Y-%m-%d') + '-ARTISTS.parquet')  # TODO: No usar, usar el del context de Airflow
+    artist_path = os.path.join(os.getcwd(), kwargs['today'] + '-ARTISTS.parquet')
 
     alltagartists.to_parquet(artist_path)
 
@@ -215,7 +224,7 @@ def etl_artist_data(**kwargs):
         name = artist['name'].replace('&', '').replace(' ', '+')
         tag = artist['tag'].replace('+', ' ').title()
 
-        artistdaily.append(process_artist(tag, name, key, alltagartists, index))
+        artistdaily.append(process_artist(tag, name, key, alltagartists, index, kwargs['today']))
         logging.info(f'{round(100 * len(artistdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 
@@ -231,7 +240,7 @@ def etl_track_data(**kwargs):
     for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
 
-        tracksdaily.append(process_tracks(name, key, alltagartists, index))
+        tracksdaily.append(process_tracks(name, key, alltagartists, index, kwargs['today']))
         logging.info(f'{round(100 * len(tracksdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 
@@ -247,7 +256,7 @@ def etl_album_data(**kwargs):
     for index, artist in alltagartists.iterrows():
         name = artist['name'].replace('&', '').replace(' ', '+')
 
-        albumbsdaily.append(process_albums(name, key, alltagartists, index))
+        albumbsdaily.append(process_albums(name, key, alltagartists, index, kwargs['today']))
         logging.info(f'{round(100 * len(albumbsdaily) / alltagartists.shape[0], 1)}% read. {name} loaded.')
     logging.info('Data ready.')
 

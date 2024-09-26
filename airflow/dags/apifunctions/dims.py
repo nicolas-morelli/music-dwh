@@ -1,7 +1,6 @@
 import os
 import yaml
 import logging
-from datetime import datetime
 import redshift_connector
 import awswrangler as wr
 import pandas as pd
@@ -42,7 +41,6 @@ def handle_repeated(daily, type):
     daily['effective_date'] = daily['effective_date_daily']
 
     if type == 'artist':
-        daily['artist_tag'] = daily['artist_tag_daily']
         daily['consecutive_times_in_top_50'] += 1
 
     cols_to_drop = []
@@ -56,14 +54,14 @@ def handle_repeated(daily, type):
     return daily
 
 
-def handle_out(daily, type):
+def handle_out(daily, type, today):
     daily['new_plays'] = 0
 
     if not type == 'album':
         daily['new_listeners'] = 0
         daily['current_rank'] = pd.NA
 
-    daily['effective_date'] = datetime.now().strftime('%Y-%m-%d')
+    daily['effective_date'] = today
 
     daily = daily.drop('id', axis=1)
 
@@ -114,14 +112,7 @@ def artist_dim(*args, **kwargs):
                         """)
             artists = cur.fetch_dataframe()
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                            SET last_known = 'No',
-                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes'
-                                AND (current_rank IS NOT NULL
-                                    OR artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"))
-                        """)
-            conn.commit()
+            logging.info(kwargs['today'])
 
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
             daily = cur.fetch_dataframe()
@@ -134,7 +125,7 @@ def artist_dim(*args, **kwargs):
 
             daily_new_artists = handle_new(daily_new_artists, type='artist')
             daily_repeated_artists = handle_repeated(daily_repeated_artists, type='artist')
-            daily_out_artists = handle_out(daily_out_artists, type='artist')
+            daily_out_artists = handle_out(daily_out_artists, type='artist', today=kwargs['today'])
 
             daily_new_artists['artist_id'] = pd.NA
 
@@ -147,6 +138,17 @@ def artist_dim(*args, **kwargs):
             for index, _ in daily[daily['artist_id'].isna()].iterrows():
                 daily.loc[index, 'artist_id'] = max_id + 1
                 max_id += 1
+
+            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            SET last_known = 'No',
+                                expiration_date = '{kwargs['today']}'
+                            WHERE last_known = 'Yes'
+                                AND (current_rank IS NOT NULL
+                                    OR artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"))
+                        """)
+            conn.commit()
+
+            logging.info('Updated')
 
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
@@ -200,16 +202,6 @@ def tracks_dim(*args, **kwargs):
                         """)
             tracks = cur.fetch_dataframe()
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                            SET last_known = 'No',
-                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes'
-                                AND (current_rank IS NOT NULL
-                                    OR track_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"
-                                                                                            JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name))
-                        """)
-            conn.commit()
-
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
             daily = cur.fetch_dataframe()
 
@@ -221,7 +213,7 @@ def tracks_dim(*args, **kwargs):
 
             daily_new_tracks = handle_new(daily_new_tracks, type='track')
             daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='track')
-            daily_out_tracks = handle_out(daily_out_tracks, type='track')
+            daily_out_tracks = handle_out(daily_out_tracks, type='track', today=kwargs['today'])
 
             daily_new_tracks['track_id'] = pd.NA
 
@@ -234,6 +226,16 @@ def tracks_dim(*args, **kwargs):
             for index, _ in daily[daily['track_id'].isna()].iterrows():
                 daily.loc[index, 'track_id'] = max_id + 1
                 max_id += 1
+
+            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            SET last_known = 'No',
+                                expiration_date = '{kwargs['today']}'
+                            WHERE last_known = 'Yes'
+                                AND (current_rank IS NOT NULL
+                                    OR track_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"
+                                                                                            JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name))
+                        """)
+            conn.commit()
 
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
@@ -288,15 +290,6 @@ def albums_dim(*args, **kwargs):
                         """)
             tracks = cur.fetch_dataframe()
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                            SET last_known = 'No',
-                                expiration_date = '{datetime.now().strftime('%Y-%m-%d')}'
-                            WHERE last_known = 'Yes'
-                                AND album_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"
-                                                                                        JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name)
-                        """)
-            conn.commit()
-
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
             daily = cur.fetch_dataframe()
 
@@ -308,7 +301,7 @@ def albums_dim(*args, **kwargs):
 
             daily_new_tracks = handle_new(daily_new_tracks, type='album')
             daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='album')
-            daily_out_tracks = handle_out(daily_out_tracks, type='album')
+            daily_out_tracks = handle_out(daily_out_tracks, type='album', today=kwargs['today'])
 
             daily_new_tracks['album_id'] = pd.NA
 
@@ -321,6 +314,15 @@ def albums_dim(*args, **kwargs):
             for index, _ in daily[daily['album_id'].isna()].iterrows():
                 daily.loc[index, 'album_id'] = max_id + 1
                 max_id += 1
+
+            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            SET last_known = 'No',
+                                expiration_date = '{kwargs['today']}'
+                            WHERE last_known = 'Yes'
+                                AND album_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"
+                                                                                        JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name)
+                        """)
+            conn.commit()
 
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
