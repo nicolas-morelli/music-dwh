@@ -341,7 +341,7 @@ def albums_dim(*args, **kwargs):
                         """)
             albums = cur.fetch_dataframe()
 
-            logging.info('Fetched last known data.') 
+            logging.info('Fetched last known data.')
 
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
             daily = cur.fetch_dataframe()
