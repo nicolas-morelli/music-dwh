@@ -18,6 +18,7 @@ def from_redshift_to_redshift(func):
             password = creds['redshift']['password']
             logging.info('Credentials read.')
 
+        logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         kwargs['conn'] = conn
 
@@ -25,6 +26,8 @@ def from_redshift_to_redshift(func):
         df_api = df_api.infer_objects()
 
         table_name = kwargs['table_name']
+
+        logging.info('Creating table.')
         wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='append', use_column_names=True, lock=True, index=False)
         logging.info(f'{table_name} loaded.')
 
@@ -34,31 +37,26 @@ def from_redshift_to_redshift(func):
 
 
 @from_redshift_to_redshift
-def artist_fact(*args, **kwargs):
-    conn = kwargs['conn']
-
-    with conn.cursor() as cur:
-        cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
-        daily = cur.fetch_dataframe()
-        cur.execute('SELECT DISTINCT artist_name, artist_id, artist_tag FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
-        artists = cur.fetch_dataframe().rename(columns={'artist_name': 'name', 'artist_tag': 'tag'})
-
-    daily = daily.merge(artists, on=['name', 'tag'], how='inner').drop(['name', 'tag'], axis=1)
-
-    return daily
-
-
-@from_redshift_to_redshift
 def track_fact(*args, **kwargs):
     conn = kwargs['conn']
 
     with conn.cursor() as cur:
         cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
         daily = cur.fetch_dataframe()
-        cur.execute('SELECT DISTINCT track_name, track_id FROM "2024_domingo_nicolas_morelli_schema"."dim_tracks"')
-        artists = cur.fetch_dataframe().rename(columns={'track_name': 'name'})
 
-    daily = daily.merge(artists, on='name', how='inner').drop(['name', 'artist'], axis=1)
+        logging.info('Fetched daily.')
+
+        cur.execute("""SELECT DISTINCT track_name, track_id, artist_name
+                    FROM "2024_domingo_nicolas_morelli_schema".dim_tracks t
+                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
+                    """)
+        artists = cur.fetch_dataframe().rename(columns={'track_name': 'name', 'artist_name': 'artist'})
+
+        logging.info('Fetched id.')
+
+    daily = daily.merge(artists, on=['name', 'artist'], how='inner').drop(['name', 'artist'], axis=1).drop_duplicates()
+
+    logging.info('Data ready.')
 
     return daily
 
@@ -70,9 +68,19 @@ def album_fact(*args, **kwargs):
     with conn.cursor() as cur:
         cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
         daily = cur.fetch_dataframe()
-        cur.execute('SELECT DISTINCT album_name, album_id FROM "2024_domingo_nicolas_morelli_schema"."dim_albums"')
-        artists = cur.fetch_dataframe().rename(columns={'album_name': 'name'})
 
-    daily = daily.merge(artists, on='name', how='inner').drop(['name', 'artist'], axis=1)
+        logging.info('Fetched daily.')
+
+        cur.execute("""SELECT DISTINCT album_name, album_id, artist_name
+                    FROM "2024_domingo_nicolas_morelli_schema"."dim_albums" t
+                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
+                    """)
+        artists = cur.fetch_dataframe().rename(columns={'album_name': 'name', 'artist_name': 'artist'})
+
+        logging.info('Fetched id.')
+
+    daily = daily.merge(artists, on=['name', 'artist'], how='inner').drop(['name', 'artist'], axis=1).drop_duplicates()
+
+    logging.info('Data ready.')
 
     return daily

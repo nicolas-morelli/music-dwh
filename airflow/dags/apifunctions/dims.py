@@ -22,6 +22,8 @@ def handle_new(daily, type):
     daily['expiration_date'] = '9999-12-31'
     daily['last_known'] = 'Yes'
 
+    logging.info(f'New {type} handled.') if not daily.empty else logging.info(f'No new {type}.')
+
     return daily
 
 
@@ -51,6 +53,8 @@ def handle_repeated(daily, type):
 
     daily = daily.drop(cols_to_drop, axis=1)
 
+    logging.info(f'Repeated {type} handled.') if not daily.empty else logging.info(f'No repeated {type}.')
+
     return daily
 
 
@@ -64,6 +68,8 @@ def handle_out(daily, type, today):
     daily['effective_date'] = today
 
     daily = daily.drop('id', axis=1)
+
+    logging.info(f'Leaving {type} handled.') if not daily.empty else logging.info(f'No leaving {type}.')
 
     return daily
 
@@ -81,6 +87,8 @@ def from_redshift_to_redshift(func):
             password = creds['redshift']['password']
             logging.info('Credentials read.')
 
+        logging.info('Connecting to Redshift.')
+
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         kwargs['conn'] = conn
 
@@ -88,7 +96,9 @@ def from_redshift_to_redshift(func):
         df_api = df_api.infer_objects()
 
         table_name = kwargs['table_name']
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='append', use_column_names=True, lock=True, index=False)
+
+        logging.info('Creating table.')
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='append', use_column_names=True, lock=True, index=False, chunksize=1000)
         logging.info(f'{table_name} loaded.')
 
         return
@@ -112,10 +122,12 @@ def artist_dim(*args, **kwargs):
                         """)
             artists = cur.fetch_dataframe()
 
-            logging.info(kwargs['today'])
+            logging.info('Fetched last known data.')
 
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
             daily = cur.fetch_dataframe()
+
+            logging.info('Fetched daily data.')
 
             daily = daily.rename(columns={'name': 'artist_name', 'rank': 'current_rank', 'stats_date': 'effective_date', 'tag': 'artist_tag'})
 
@@ -123,13 +135,19 @@ def artist_dim(*args, **kwargs):
             daily_repeated_artists = daily.merge(artists, on=['artist_name', 'artist_tag'], how='inner', suffixes=['_daily', '_old'])
             daily_out_artists = artists[~artists['artist_name'].isin(daily['artist_name'])]
 
+            logging.info('Divided data.')
+
             daily_new_artists = handle_new(daily_new_artists, type='artist')
             daily_repeated_artists = handle_repeated(daily_repeated_artists, type='artist')
             daily_out_artists = handle_out(daily_out_artists, type='artist', today=kwargs['today'])
 
+            logging.info('Handled data.')
+
             daily_new_artists['artist_id'] = pd.NA
 
             daily = pd.concat([daily_new_artists, daily_repeated_artists, daily_out_artists]).drop_duplicates().reset_index(drop=True)
+
+            logging.info('Concatenated data.')
 
             cur.execute(f'SELECT MAX(artist_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -138,6 +156,8 @@ def artist_dim(*args, **kwargs):
             for index, _ in daily[daily['artist_id'].isna()].iterrows():
                 daily.loc[index, 'artist_id'] = max_id + 1
                 max_id += 1
+
+            logging.info('New ids generated.')
 
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
@@ -148,10 +168,11 @@ def artist_dim(*args, **kwargs):
                         """)
             conn.commit()
 
-            logging.info('Updated')
+            logging.info('Updated previous last known.')
 
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
+            logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
                             CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
@@ -175,14 +196,18 @@ def artist_dim(*args, **kwargs):
                         """)
             conn.commit()
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
-
             daily = cur.fetch_dataframe()
+
+            logging.info('Fetched daily data.')
 
             daily = daily.rename(columns={'name': 'artist_name', 'rank': 'current_rank', 'stats_date': 'effective_date', 'tag': 'artist_tag'})
 
             daily = handle_new(daily, type='artist')
             daily = daily.drop_duplicates().reset_index(names='artist_id')
 
+            logging.info('Handled new data.')
+
+    logging.info('Data ready.')
     return daily
 
 
@@ -202,8 +227,12 @@ def tracks_dim(*args, **kwargs):
                         """)
             tracks = cur.fetch_dataframe()
 
+            logging.info('Fetched last known data.')
+
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
             daily = cur.fetch_dataframe()
+
+            logging.info('Fetched daily data.')
 
             daily = daily.rename(columns={'name': 'track_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
 
@@ -211,13 +240,24 @@ def tracks_dim(*args, **kwargs):
             daily_repeated_tracks = daily.merge(tracks, on='track_name', how='inner', suffixes=['_daily', '_old'])
             daily_out_tracks = tracks[~tracks['track_name'].isin(daily['track_name'])]
 
+            logging.info('Divided data.')
+
             daily_new_tracks = handle_new(daily_new_tracks, type='track')
             daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='track')
             daily_out_tracks = handle_out(daily_out_tracks, type='track', today=kwargs['today'])
 
+            logging.info('Handled data.')
+
             daily_new_tracks['track_id'] = pd.NA
 
+            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
+
+            daily_new_tracks = daily_new_tracks.merge(artists, on='artist', how='inner')
+
             daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).drop_duplicates().reset_index(drop=True).drop('artist', axis=1)
+
+            logging.info('Concatenated data.')
 
             cur.execute(f'SELECT MAX(track_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -226,6 +266,8 @@ def tracks_dim(*args, **kwargs):
             for index, _ in daily[daily['track_id'].isna()].iterrows():
                 daily.loc[index, 'track_id'] = max_id + 1
                 max_id += 1
+
+            logging.info('New ids generated.')
 
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
@@ -236,9 +278,11 @@ def tracks_dim(*args, **kwargs):
                                                                                             JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name))
                         """)
             conn.commit()
+            logging.info('Updated previous last known.')
 
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
+            logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
                             CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
@@ -259,18 +303,25 @@ def tracks_dim(*args, **kwargs):
                             )
 
                         """)
+            conn.commit()
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
-
             daily = cur.fetch_dataframe()
+
+            logging.info('Fetched daily data.')
 
             daily = handle_new(daily, type='track')
             daily = daily.drop_duplicates().reset_index(names='track_id')
 
+            logging.info('Handled new data.')
+
             cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
+            logging.info('Fetched artist.')
+
         daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
 
+    logging.info('Data ready.')
     return daily
 
 
@@ -288,24 +339,39 @@ def albums_dim(*args, **kwargs):
                         WHERE last_known = 'Yes'
 
                         """)
-            tracks = cur.fetch_dataframe()
+            albums = cur.fetch_dataframe()
+
+            logging.info('Fetched last known data.')            
 
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
             daily = cur.fetch_dataframe()
 
+            logging.info('Fetched daily data.')
+
             daily = daily.rename(columns={'name': 'album_name', 'stats_date': 'effective_date'})
 
-            daily_new_tracks = daily[~daily['album_name'].isin(tracks['album_name'])]
-            daily_repeated_tracks = daily.merge(tracks, on='album_name', how='inner', suffixes=['_daily', '_old'])
-            daily_out_tracks = tracks[~tracks['album_name'].isin(daily['album_name'])]
+            daily_new_albums = daily[~daily['album_name'].isin(albums['album_name'])]
+            daily_repeated_albums = daily.merge(albums, on='album_name', how='inner', suffixes=['_daily', '_old'])
+            daily_out_albums = albums[~albums['album_name'].isin(daily['album_name'])]
 
-            daily_new_tracks = handle_new(daily_new_tracks, type='album')
-            daily_repeated_tracks = handle_repeated(daily_repeated_tracks, type='album')
-            daily_out_tracks = handle_out(daily_out_tracks, type='album', today=kwargs['today'])
+            logging.info('Divided data.')
 
-            daily_new_tracks['album_id'] = pd.NA
+            daily_new_albums = handle_new(daily_new_albums, type='album')
+            daily_repeated_albums = handle_repeated(daily_repeated_albums, type='album')
+            daily_out_albums = handle_out(daily_out_albums, type='album', today=kwargs['today'])
 
-            daily = pd.concat([daily_new_tracks, daily_repeated_tracks, daily_out_tracks]).drop_duplicates().reset_index(drop=True).drop('artist', axis=1)
+            logging.info('Handled data.')
+
+            daily_new_albums['album_id'] = pd.NA
+
+            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
+
+            daily_new_albums = daily_new_albums.merge(artists, on='artist', how='inner')
+
+            daily = pd.concat([daily_new_albums, daily_repeated_albums, daily_out_albums]).drop_duplicates().reset_index(drop=True).drop('artist', axis=1)
+
+            logging.info('Concatenated data.')
 
             cur.execute(f'SELECT MAX(album_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
 
@@ -314,6 +380,8 @@ def albums_dim(*args, **kwargs):
             for index, _ in daily[daily['album_id'].isna()].iterrows():
                 daily.loc[index, 'album_id'] = max_id + 1
                 max_id += 1
+
+            logging.info('New ids generated.')
 
             cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
                             SET last_known = 'No',
@@ -324,8 +392,11 @@ def albums_dim(*args, **kwargs):
                         """)
             conn.commit()
 
+            logging.info('Updated previous last known.')
+
     except redshift_connector.error.ProgrammingError:
         with conn.cursor() as cur:
+            logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
                             CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
@@ -342,16 +413,23 @@ def albums_dim(*args, **kwargs):
                             )
 
                         """)
+            conn.commit()
             cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
-
             daily = cur.fetch_dataframe()
+
+            logging.info('Fetched daily data.')
 
             daily = handle_new(daily, type='album')
             daily = daily.drop_duplicates().reset_index(names='album_id')
 
+            logging.info('Handled new data.')
+
             cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
+            logging.info('Fetched artist.')
+
         daily = daily.merge(artists, on='artist', how='inner').drop('artist', axis=1)
 
+    logging.info('Data ready.')
     return daily

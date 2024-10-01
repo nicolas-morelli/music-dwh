@@ -25,13 +25,8 @@ jobs:
       - name: Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt  # Use this if you have a requirements file
-          # You can also manually specify dependencies like `unittest`, `mock` etc. if needed
-          # pip install unittest mock
+          pip install -r requirements.txt  
           
       - name: Tests
         run: |
-          for test_file in $(find ./tests -name "*.py"); do
-            echo "Running $test_file"
-            python $test_file
-          done
+          pytest airflow/tests

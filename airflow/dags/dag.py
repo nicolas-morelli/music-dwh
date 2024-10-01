@@ -82,13 +82,6 @@ with DAG(
         op_kwargs={'table_name': 'dim_albums', 'today': ds}
     )
 
-    artist_fact = ModdedPythonOperator(
-        task_id='artist_fact',
-        python_callable=facts.artist_fact,
-        retry_delay=timedelta(minutes=2),
-        op_kwargs={'table_name': 'fact_artists', 'today': ds}
-    )
-
     track_fact = ModdedPythonOperator(
         task_id='track_fact',
         python_callable=facts.track_fact,
@@ -107,6 +100,6 @@ extract_artists >> [etl_artist_data, etl_track_data, etl_album_data]
 etl_artist_data >> artist_dim
 etl_track_data >> tracks_dim
 etl_album_data >> albums_dim
-artist_dim >> [tracks_dim, albums_dim, artist_fact]
+artist_dim >> [tracks_dim, albums_dim]
 tracks_dim >> track_fact
 albums_dim >> album_fact
