@@ -1,8 +1,13 @@
+import os
+import sys
 import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 import pandas as pd
-from airflow.apifunctions.api import process_artist, process_tracks, process_albums, process_track, process_album
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dags')))
+
+from apifunctions.api import process_artist, process_tracks, process_albums, process_track, process_album
 
 
 class TestLastFmProcessing(unittest.TestCase):
@@ -34,8 +39,8 @@ class TestLastFmProcessing(unittest.TestCase):
 
         result = process_tracks('Kublai Khan TX', self.key, self.tagartists, 0)
 
-        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': '1', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'},
-                    {'name': 'No Kin', 'playcount': '4000000', 'listeners': '800000', 'rank': '2', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}]
+        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'},
+                    {'name': 'No Kin', 'playcount': '4000000', 'listeners': '800000', 'rank': 2, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}]
 
         self.assertEqual(result, expected)
 
@@ -55,7 +60,7 @@ class TestLastFmProcessing(unittest.TestCase):
     def test_process_track(self):
         result = process_track(0, MagicMock(json=MagicMock(return_value=self.track_data)), 'Kublai Khan TX')
 
-        expected = {'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': '1', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}
+        expected = {'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}
 
         self.assertEqual(result, expected)
 
