@@ -2,7 +2,6 @@ import os
 import sys
 import unittest
 from unittest.mock import patch, MagicMock
-from datetime import datetime
 import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dags')))
@@ -25,9 +24,9 @@ class TestLastFmProcessing(unittest.TestCase):
         mock_response.json.return_value = self.artist_data
         mock_get.return_value = mock_response
 
-        result = process_artist('Metalcore', 'Kublai Khan TX', self.key, self.tagartists, 0)
+        result = process_artist('Metalcore', 'Kublai Khan TX', self.key, self.tagartists, 0, '2000-07-09')
 
-        expected = {'name': 'Kublai Khan TX', 'tag': 'Metalcore', 'listeners': '5000000', 'playcount': '100000000', 'rank': 1, 'stats_date': datetime.now().strftime('%Y-%m-%d')}
+        expected = {'name': 'Kublai Khan TX', 'tag': 'Metalcore', 'listeners': '5000000', 'playcount': '100000000', 'rank': 1, 'stats_date': '2000-07-09'}
 
         self.assertEqual(result, expected)
 
@@ -37,10 +36,10 @@ class TestLastFmProcessing(unittest.TestCase):
         mock_response.json.return_value = self.track_data
         mock_get.return_value = mock_response
 
-        result = process_tracks('Kublai Khan TX', self.key, self.tagartists, 0)
+        result = process_tracks('Kublai Khan TX', self.key, self.tagartists, 0, '2000-07-09')
 
-        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'},
-                    {'name': 'No Kin', 'playcount': '4000000', 'listeners': '800000', 'rank': 2, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}]
+        expected = [{'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'},
+                    {'name': 'No Kin', 'playcount': '4000000', 'listeners': '800000', 'rank': 2, 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'}]
 
         self.assertEqual(result, expected)
 
@@ -50,24 +49,24 @@ class TestLastFmProcessing(unittest.TestCase):
         mock_response.json.return_value = self.album_data
         mock_get.return_value = mock_response
 
-        result = process_albums('Kublai Khan TX', self.key, self.tagartists, 0)
+        result = process_albums('Kublai Khan TX', self.key, self.tagartists, 0, '2000-07-09')
 
-        expected = [{'name': 'Absolute', 'playcount': '3000000', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'},
-                    {'name': 'Nomad', 'playcount': '2500000', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}]
+        expected = [{'name': 'Absolute', 'playcount': '3000000', 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'},
+                    {'name': 'Nomad', 'playcount': '2500000', 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'}]
 
         self.assertEqual(result, expected)
 
     def test_process_track(self):
-        result = process_track(0, MagicMock(json=MagicMock(return_value=self.track_data)), 'Kublai Khan TX')
+        result = process_track(0, MagicMock(json=MagicMock(return_value=self.track_data)), 'Kublai Khan TX', '2000-07-09')
 
-        expected = {'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}
+        expected = {'name': 'The Hammer', 'playcount': '5000000', 'listeners': '1000000', 'rank': 1, 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'}
 
         self.assertEqual(result, expected)
 
     def test_process_album(self):
-        result = process_album(0, MagicMock(json=MagicMock(return_value=self.album_data)), 'Kublai Khan TX')
+        result = process_album(0, MagicMock(json=MagicMock(return_value=self.album_data)), 'Kublai Khan TX', '2000-07-09')
 
-        expected = {'name': 'Absolute', 'playcount': '3000000', 'stats_date': datetime.now().strftime('%Y-%m-%d'), 'artist': 'Kublai Khan TX'}
+        expected = {'name': 'Absolute', 'playcount': '3000000', 'stats_date': '2000-07-09', 'artist': 'Kublai Khan TX'}
 
         self.assertEqual(result, expected)
 

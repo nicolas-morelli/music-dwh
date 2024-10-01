@@ -25,11 +25,8 @@ jobs:
       - name: Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r airflow/requirements.txt  # Use this if you have a requirements file
+          pip install -r airflow/requirements.txt  
           
       - name: Tests
         run: |
-          for test_file in $(find airflow/tests -name "*.py"); do
-            echo "Running $test_file"
-            python $test_file
-          done
+          pytest airflow/tests
