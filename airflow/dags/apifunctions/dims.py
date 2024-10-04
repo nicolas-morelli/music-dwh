@@ -220,9 +220,10 @@ def tracks_dim(*args, **kwargs):
         with conn.cursor() as cur:
             cur.execute(f"""
 
-                        SELECT *
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                        WHERE last_known = 'Yes'
+                            SELECT tn.*, a.artist_name AS artist
+                            FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
+                            JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                            WHERE tn.last_known = 'Yes'
 
                         """)
             tracks = cur.fetch_dataframe()
@@ -236,9 +237,12 @@ def tracks_dim(*args, **kwargs):
 
             daily = daily.rename(columns={'name': 'track_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
 
-            daily_new_tracks = daily[~daily['track_name'].isin(tracks['track_name'])]
-            daily_repeated_tracks = daily.merge(tracks, on='track_name', how='inner', suffixes=['_daily', '_old'])
-            daily_out_tracks = tracks[~tracks['track_name'].isin(daily['track_name'])]
+            daily['concat'] = daily['track_name'] + daily['artist']
+            tracks['concat'] = tracks['track_name'] + tracks['artist']
+
+            daily_new_tracks = daily[~daily['concat'].isin(tracks['concat'])].drop('concat', axis=1)
+            daily_repeated_tracks = daily.drop('concat', axis=1).merge(tracks.drop('concat', axis=1), on=['artist', 'track_name'], how='inner', suffixes=['_daily', '_old'])
+            daily_out_tracks = tracks[~tracks['concat'].isin(daily['concat'])].drop('concat', axis=1)
 
             logging.info('Divided data.')
 
@@ -334,9 +338,10 @@ def albums_dim(*args, **kwargs):
         with conn.cursor() as cur:
             cur.execute(f"""
 
-                        SELECT *
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                        WHERE last_known = 'Yes'
+                        SELECT tn.*, a.artist_name AS artist
+                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
+                        JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                        WHERE tn.last_known = 'Yes'
 
                         """)
             albums = cur.fetch_dataframe()
@@ -350,9 +355,12 @@ def albums_dim(*args, **kwargs):
 
             daily = daily.rename(columns={'name': 'album_name', 'stats_date': 'effective_date'})
 
-            daily_new_albums = daily[~daily['album_name'].isin(albums['album_name'])]
-            daily_repeated_albums = daily.merge(albums, on='album_name', how='inner', suffixes=['_daily', '_old'])
-            daily_out_albums = albums[~albums['album_name'].isin(daily['album_name'])]
+            daily['concat'] = daily['album_name'] + daily['artist']
+            albums['concat'] = albums['album_name'] + albums['artist']
+
+            daily_new_albums = daily[~daily['concat'].isin(albums['concat'])].drop('concat', axis=1)
+            daily_repeated_albums = daily.drop('concat', axis=1).merge(albums.drop('concat', axis=1), on=['album_name', 'artist'], how='inner', suffixes=['_daily', '_old'])
+            daily_out_albums = albums[~albums['concat'].isin(daily['concat'])].drop('concat', axis=1)
 
             logging.info('Divided data.')
 
