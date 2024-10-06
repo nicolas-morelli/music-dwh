@@ -43,7 +43,7 @@ def from_redshift_to_redshift(func):
 
 
 @from_redshift_to_redshift
-def track_fact(*args, **kwargs) -> pd.Dataframe:
+def track_fact(*args, **kwargs) -> pd.DataFrame:
     """Generates track fact in Pandas dataframe
 
     :return: Track fact data.
@@ -73,7 +73,7 @@ def track_fact(*args, **kwargs) -> pd.Dataframe:
 
 
 @from_redshift_to_redshift
-def album_fact(*args, **kwargs):
+def album_fact(*args, **kwargs) -> pd.DataFrame:
     """Generates album fact in Pandas dataframe
 
     :return: Album fact data.

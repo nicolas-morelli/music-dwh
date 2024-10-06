@@ -1,3 +1,4 @@
+import os
 from setuptools import setup, find_packages
 
 setup(
@@ -6,7 +7,7 @@ setup(
     author='Domingo Morelli',
     author_email='nicomorelli47@gmail.com',
     description='',
-    long_description=open('README.md').read(),
+    long_description=open(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'README.md'), 'r', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/nicolas-morelli/music-dwh',
     packages=find_packages(),
