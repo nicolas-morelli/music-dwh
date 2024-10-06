@@ -3,9 +3,15 @@ import yaml
 import logging
 import redshift_connector
 import awswrangler as wr
+import pandas as pd
 
 
 def from_redshift_to_redshift(func):
+    """Decorator for loading database info and appending new data to tables.
+
+    :param func: Function that returns a Pandas dataframe with new rows.
+    :type func: function
+    """
     def wrapper(*args, **kwargs):
         pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
 
@@ -37,7 +43,12 @@ def from_redshift_to_redshift(func):
 
 
 @from_redshift_to_redshift
-def track_fact(*args, **kwargs):
+def track_fact(*args, **kwargs) -> pd.Dataframe:
+    """Generates track fact in Pandas dataframe
+
+    :return: Track fact data.
+    :rtype: pd.DataFrame
+    """
     conn = kwargs['conn']
 
     with conn.cursor() as cur:
@@ -63,6 +74,11 @@ def track_fact(*args, **kwargs):
 
 @from_redshift_to_redshift
 def album_fact(*args, **kwargs):
+    """Generates album fact in Pandas dataframe
+
+    :return: Album fact data.
+    :rtype: pd.DataFrame
+    """
     conn = kwargs['conn']
 
     with conn.cursor() as cur:
