@@ -6,7 +6,16 @@ import awswrangler as wr
 import pandas as pd
 
 
-def handle_new(daily, type):
+def handle_new(daily: pd.DataFrame, type: str) -> pd.DataFrame:
+    """Handles new entries in top 50s.
+
+    :param daily: Dataframe of new entries.
+    :type daily: pd.DataFrame
+    :param type: Type of data, for specific transformations
+    :type type: str
+    :return: Transformed data of new entries.
+    :rtype: pd.DataFrame
+    """
     if type == 'album':
         daily = daily.rename(columns={'name': type + '_name', 'stats_date': 'effective_date'})
         daily['new_plays'] = daily['playcount']
@@ -27,7 +36,16 @@ def handle_new(daily, type):
     return daily
 
 
-def handle_repeated(daily, type):
+def handle_repeated(daily: pd.DataFrame, type: str) -> pd.DataFrame:
+    """Handles repeated entries in top 50s.
+
+    :param daily: Dataframe of repeated entries.
+    :type daily: pd.DataFrame
+    :param type: Type of data, for specific transformations
+    :type type: str
+    :return: Transformed data of repeated entries.
+    :rtype: pd.DataFrame
+    """
     if type == 'album':
         daily['new_plays'] = daily['playcount_daily'].astype(int) - daily['playcount_old'].astype(int).fillna(0)
         daily['playcount'] = daily['playcount_daily'].astype(int)
@@ -58,7 +76,18 @@ def handle_repeated(daily, type):
     return daily
 
 
-def handle_out(daily, type, today):
+def handle_out(daily: pd.DataFrame, type: str, today: str) -> pd.DataFrame:
+    """Handles leaving entries in top 50s.
+
+    :param daily: Dataframe of leaving entries.
+    :type daily: pd.DataFrame
+    :param type: Type of data, for specific transformations
+    :type type: str
+    :param today: Date of execution
+    :type today: str
+    :return: Transformed data of leaving entries.
+    :rtype: pd.DataFrame
+    """
     daily['new_plays'] = 0
 
     if not type == 'album':
@@ -75,6 +104,11 @@ def handle_out(daily, type, today):
 
 
 def from_redshift_to_redshift(func):
+    """Decorator for loading database info and appending new data to tables.
+
+    :param func: Function that returns a Pandas dataframe with new rows.
+    :type func: function
+    """
     def wrapper(*args, **kwargs):
         pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
 
@@ -107,7 +141,12 @@ def from_redshift_to_redshift(func):
 
 
 @from_redshift_to_redshift
-def artist_dim(*args, **kwargs):
+def artist_dim(*args, **kwargs) -> pd.DataFrame:
+    """Generates artists dimension in Pandas dataframe
+
+    :return: Artist dimension data.
+    :rtype: pd.DataFrame
+    """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
 
@@ -133,7 +172,7 @@ def artist_dim(*args, **kwargs):
 
             daily_new_artists = daily[~daily['artist_name'].isin(artists['artist_name'])]
             daily_repeated_artists = daily.merge(artists, on=['artist_name', 'artist_tag'], how='inner', suffixes=['_daily', '_old'])
-            daily_out_artists = artists[~artists['artist_name'].isin(daily['artist_name'])]
+            daily_out_artists = artists[(~artists['artist_name'].isin(daily['artist_name'])) & (~artists['current_rank'].isna())]
 
             logging.info('Divided data.')
 
@@ -212,7 +251,12 @@ def artist_dim(*args, **kwargs):
 
 
 @from_redshift_to_redshift
-def tracks_dim(*args, **kwargs):
+def tracks_dim(*args, **kwargs) -> pd.DataFrame:
+    """Generates track dimension in Pandas dataframe
+
+    :return: Track dimension data.
+    :rtype: pd.DataFrame
+    """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
 
@@ -220,9 +264,10 @@ def tracks_dim(*args, **kwargs):
         with conn.cursor() as cur:
             cur.execute(f"""
 
-                        SELECT *
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                        WHERE last_known = 'Yes'
+                            SELECT tn.*, a.artist_name AS artist
+                            FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
+                            JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                            WHERE tn.last_known = 'Yes'
 
                         """)
             tracks = cur.fetch_dataframe()
@@ -236,9 +281,12 @@ def tracks_dim(*args, **kwargs):
 
             daily = daily.rename(columns={'name': 'track_name', 'rank': 'current_rank', 'stats_date': 'effective_date'})
 
-            daily_new_tracks = daily[~daily['track_name'].isin(tracks['track_name'])]
-            daily_repeated_tracks = daily.merge(tracks, on='track_name', how='inner', suffixes=['_daily', '_old'])
-            daily_out_tracks = tracks[~tracks['track_name'].isin(daily['track_name'])]
+            daily['concat'] = daily['track_name'] + daily['artist']
+            tracks['concat'] = tracks['track_name'] + tracks['artist']
+
+            daily_new_tracks = daily[~daily['concat'].isin(tracks['concat'])].drop('concat', axis=1)
+            daily_repeated_tracks = daily.drop('concat', axis=1).merge(tracks.drop('concat', axis=1), on=['artist', 'track_name'], how='inner', suffixes=['_daily', '_old'])
+            daily_out_tracks = tracks[(~tracks['concat'].isin(daily['concat'])) & (~tracks['current_rank'].isna())].drop('concat', axis=1)
 
             logging.info('Divided data.')
 
@@ -326,7 +374,12 @@ def tracks_dim(*args, **kwargs):
 
 
 @from_redshift_to_redshift
-def albums_dim(*args, **kwargs):
+def albums_dim(*args, **kwargs) -> pd.DataFrame:
+    """Generates album dimension in Pandas dataframe
+
+    :return: Album dimension data.
+    :rtype: pd.DataFrame
+    """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
 
@@ -334,9 +387,10 @@ def albums_dim(*args, **kwargs):
         with conn.cursor() as cur:
             cur.execute(f"""
 
-                        SELECT *
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
-                        WHERE last_known = 'Yes'
+                        SELECT tn.*, a.artist_name AS artist
+                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
+                        JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                        WHERE tn.last_known = 'Yes'
 
                         """)
             albums = cur.fetch_dataframe()
@@ -350,9 +404,12 @@ def albums_dim(*args, **kwargs):
 
             daily = daily.rename(columns={'name': 'album_name', 'stats_date': 'effective_date'})
 
-            daily_new_albums = daily[~daily['album_name'].isin(albums['album_name'])]
-            daily_repeated_albums = daily.merge(albums, on='album_name', how='inner', suffixes=['_daily', '_old'])
-            daily_out_albums = albums[~albums['album_name'].isin(daily['album_name'])]
+            daily['concat'] = daily['album_name'] + daily['artist']
+            albums['concat'] = albums['album_name'] + albums['artist']
+
+            daily_new_albums = daily[~daily['concat'].isin(albums['concat'])].drop('concat', axis=1)
+            daily_repeated_albums = daily.drop('concat', axis=1).merge(albums.drop('concat', axis=1), on=['album_name', 'artist'], how='inner', suffixes=['_daily', '_old'])
+            daily_out_albums = albums[(~albums['concat'].isin(daily['concat']))].drop('concat', axis=1)
 
             logging.info('Divided data.')
 

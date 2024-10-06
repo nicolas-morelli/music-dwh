@@ -11,7 +11,7 @@ import pandas as pd
 """ AUX FUNCTIONS """
 
 
-def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
+def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> dict:
     """From an artists name, gets its details from the API and turns it into a DataFrame
 
     :param tag: Tag representative of the artists according to Last.fm
@@ -24,10 +24,10 @@ def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: 
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
-    :param today: ...
+    :param today: Date of execution
     :type today: str
     :return: Processed artist
-    :rtype: pd.DataFrame
+    :rtype: dict
     """
 
     artist = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={key}&format=json')
@@ -42,7 +42,7 @@ def process_artist(tag: str, name: str, key: str, artists: pd.DataFrame, index: 
     return artist
 
 
-def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
+def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> list:
     """From an artists name, get its top tracks from the API and turn them into a Dataframe
 
     :param name: Artists name
@@ -53,10 +53,10 @@ def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int, today
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
-    :param today: ...
+    :param today: Date of execution
     :type today: str
     :return: Processed tracks for an artist
-    :rtype: pd.DataFrame
+    :rtype: list
     """
 
     tracks = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={name}&api_key={key}&format=json')
@@ -68,7 +68,7 @@ def process_tracks(name: str, key: str, artists: pd.DataFrame, index: int, today
     return tracklist
 
 
-def process_track(i: int, tracks: requests.Response, name: str, today: str) -> pd.DataFrame:
+def process_track(i: int, tracks: requests.Response, name: str, today: str) -> dict:
     """From a dictionary of tracks and a position, process a certain track into a Dataframe
 
     :param i: Index of track
@@ -77,10 +77,10 @@ def process_track(i: int, tracks: requests.Response, name: str, today: str) -> p
     :type tracks: requests.Response
     :param name: Artists name
     :type name: str
-    :param today: ...
+    :param today: Date of execution
     :type today: str
     :return: Processed track
-    :rtype: pd.DataFrame
+    :rtype: dict
     """
 
     track = {col: tracks.json()['toptracks']['track'][i][col] for col in tracks.json()['toptracks']['track'][i] if col in ('name', 'playcount', 'listeners', '@attr')}
@@ -94,7 +94,7 @@ def process_track(i: int, tracks: requests.Response, name: str, today: str) -> p
     return track
 
 
-def process_albums(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> pd.DataFrame:
+def process_albums(name: str, key: str, artists: pd.DataFrame, index: int, today: str) -> list:
     """From an artists name, get its top albums from the API and turn them into a Dataframe
 
     :param name: Artists name
@@ -105,10 +105,10 @@ def process_albums(name: str, key: str, artists: pd.DataFrame, index: int, today
     :type artists: pd.DataFrame
     :param index: Position of artist in artists to process
     :type index: int
-    :param today: ...
+    :param today: Date of execution
     :type today: str
     :return: Processed albums for an artist
-    :rtype: pd.DataFrame
+    :rtype: list
     """
 
     albums = requests.get(f'https://ws.audioscrobbler.com/2.0/?method=artist.gettopalbums&artist={name}&api_key={key}&format=json')
@@ -120,7 +120,7 @@ def process_albums(name: str, key: str, artists: pd.DataFrame, index: int, today
     return albumlist
 
 
-def process_album(i: int, albums: requests.Response, name: str, today: str) -> pd.DataFrame:
+def process_album(i: int, albums: requests.Response, name: str, today: str) -> dict:
     """From a dictionary of albums and a position, process a certain track into a Dataframe
 
     :param i: Index of album
@@ -129,10 +129,10 @@ def process_album(i: int, albums: requests.Response, name: str, today: str) -> p
     :type albums: requests.Response
     :param name: Artists name
     :type name: str
-    :param today: ...
+    :param today: Date of execution
     :type today: str
     :return: Processed album
-    :rtype: pd.DataFrame
+    :rtype: dict
     """
 
     album = {col: albums.json()['topalbums']['album'][i][col] for col in albums.json()['topalbums']['album'][i] if col in ('name', 'playcount')}
@@ -143,6 +143,11 @@ def process_album(i: int, albums: requests.Response, name: str, today: str) -> p
 
 
 def load_df_and_to_redshift(func):
+    """Decorator for getting credentials and database info before func and loading a table after func return.
+
+    :param func: Function that returns a Pandas dataframe to create table.
+    :type func: function
+    """
     def wrapper(*args, **kwargs):
         pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
 
@@ -179,6 +184,11 @@ def load_df_and_to_redshift(func):
 
 
 def extract_artists(**kwargs) -> str:
+    """Gets top 50 artists for genres listed in tags.
+
+    :return: Path to parquet with artists.
+    :rtype: str
+    """
     pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
 
     with open(pathcreds, 'r') as creds:
@@ -215,7 +225,12 @@ def extract_artists(**kwargs) -> str:
 
 
 @load_df_and_to_redshift
-def etl_artist_data(**kwargs):
+def etl_artist_data(**kwargs) -> pd.DataFrame:
+    """Gets data from artists in parquet.
+
+    :return: Artist data for staging.
+    :rtype: pd.DataFrame
+    """
     alltagartists = kwargs['alltagartists']
     key = kwargs['key']
 
@@ -232,7 +247,12 @@ def etl_artist_data(**kwargs):
 
 
 @load_df_and_to_redshift
-def etl_track_data(**kwargs):
+def etl_track_data(**kwargs) -> pd.DataFrame:
+    """Gets data from tracks of artists in parquet.
+
+    :return: Track data for staging.
+    :rtype: pd.DataFrame
+    """
     alltagartists = kwargs['alltagartists']
     key = kwargs['key']
 
@@ -248,7 +268,12 @@ def etl_track_data(**kwargs):
 
 
 @load_df_and_to_redshift
-def etl_album_data(**kwargs):
+def etl_album_data(**kwargs) -> pd.DataFrame:
+    """Gets data from albums of artists in parquet.
+
+    :return: Album data for staging.
+    :rtype: pd.DataFrame
+    """
     alltagartists = kwargs['alltagartists']
     key = kwargs['key']
 
