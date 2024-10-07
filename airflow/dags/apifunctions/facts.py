@@ -1,9 +1,9 @@
 import os
-import yaml
 import logging
 import redshift_connector
 import awswrangler as wr
 import pandas as pd
+from dotenv import load_dotenv
 
 
 def from_redshift_to_redshift(func):
@@ -13,16 +13,15 @@ def from_redshift_to_redshift(func):
     :type func: function
     """
     def wrapper(*args, **kwargs):
-        pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
+        pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
 
-        with open(pathcreds, 'r') as creds:
-            creds = yaml.safe_load(creds)
-            host = creds['redshift']['host']
-            port = creds['redshift']['port']
-            db = creds['redshift']['db']
-            user = creds['redshift']['user']
-            password = creds['redshift']['password']
-            logging.info('Credentials read.')
+        load_dotenv(pathcreds)
+        host = os.getenv('REDSHIFT_HOST')
+        port = os.getenv('REDSHIFT_PORT')
+        db = os.getenv('REDSHIFT_DB')
+        user = os.getenv('REDSHIFT_USER')
+        password = os.getenv('REDSHIFT_PW')
+        logging.info('Credentials read.')
 
         logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
