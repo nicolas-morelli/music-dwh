@@ -99,9 +99,9 @@ LASTFM_KEY=Llave de la API de last.fm
 LASTFM_SECRET=Secreto de la API de last.fm (no se utiliza en el proyecto de momento y puede ser obviada)
 
 ### Airflow
-Se debe realizar compose del docker-compose provisto, el cual creara una instancia de Airflow en localhost::8080. Alli, con usuario y contraseña 'airflow' debera entrar y activar el DAG.
+Se debe realizar compose del docker-compose provisto, el cual creara una instancia de Airflow en localhost::8080. Alli, con usuario y contraseña 'airflow' (o aquella que defina en .env) debera entrar y activar el DAG.
 
 Esto permitira la ejecucion diaria del ETL, lo cual generara los datos con el paso del tiempo.
 
 ### Sphinx
-Puede ver documentacion del proyecto en localhost::8000.
+Puede ver documentacion del proyecto en localhost::8000 una vez ejecutado el docker-compose.yaml.
