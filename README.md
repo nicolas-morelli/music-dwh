@@ -85,13 +85,17 @@ Utilizando las tablas de staging y dimensiones se producen las siguientes tablas
 - fact_tracks
   - stats_date
   - track_id
+  - artist_id
   - playcount
   - listeners
   - rank
 - fact_albums
   - stats_date
   - album_id
+  - artist_id
   - playcount
+
+Las mismas contienen los datos de las dims al dia de la fecha.
 
 ## Como ejecutar
 ### .env

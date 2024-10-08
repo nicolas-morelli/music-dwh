@@ -56,7 +56,7 @@ def track_fact(*args, **kwargs) -> pd.DataFrame:
 
         logging.info('Fetched daily.')
 
-        cur.execute("""SELECT DISTINCT track_name, track_id, artist_name
+        cur.execute("""SELECT DISTINCT track_name, track_id, artist_name, t.artist_id
                     FROM "2024_domingo_nicolas_morelli_schema".dim_tracks t
                     JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
                     """)
@@ -86,7 +86,7 @@ def album_fact(*args, **kwargs) -> pd.DataFrame:
 
         logging.info('Fetched daily.')
 
-        cur.execute("""SELECT DISTINCT album_name, album_id, artist_name
+        cur.execute("""SELECT DISTINCT album_name, album_id, artist_name, t.artist_id
                     FROM "2024_domingo_nicolas_morelli_schema"."dim_albums" t
                     JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
                     """)
