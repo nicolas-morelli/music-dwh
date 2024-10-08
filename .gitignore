@@ -69,7 +69,7 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
+airflow/docs/_build/
 
 # PyBuilder
 .pybuilder/
@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 
 .vscode
+
+creds.yaml

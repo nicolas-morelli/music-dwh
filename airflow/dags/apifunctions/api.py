@@ -1,11 +1,11 @@
 import os
-import yaml
 import logging
 from itertools import chain
 import requests
 import redshift_connector
 import awswrangler as wr
 import pandas as pd
+from dotenv import load_dotenv
 
 
 """ AUX FUNCTIONS """
@@ -149,17 +149,16 @@ def load_df_and_to_redshift(func):
     :type func: function
     """
     def wrapper(*args, **kwargs):
-        pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
+        pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
 
-        with open(pathcreds, 'r') as creds:
-            creds = yaml.safe_load(creds)
-            host = creds['redshift']['host']
-            port = creds['redshift']['port']
-            db = creds['redshift']['db']
-            user = creds['redshift']['user']
-            password = creds['redshift']['password']
-            key = creds['lastfm']['key']
-            logging.info('Credentials read.')
+        load_dotenv(pathcreds)
+        host = os.getenv('REDSHIFT_HOST')
+        port = os.getenv('REDSHIFT_PORT')
+        db = os.getenv('REDSHIFT_DB')
+        user = os.getenv('REDSHIFT_USER')
+        password = os.getenv('REDSHIFT_PW')
+        key = os.getenv('LASTFM_KEY')
+        logging.info('Credentials read.')
 
         alltagartists = pd.read_parquet(kwargs['ti'].xcom_pull(task_ids='extract_artists'))
 
@@ -189,12 +188,13 @@ def extract_artists(**kwargs) -> str:
     :return: Path to parquet with artists.
     :rtype: str
     """
-    pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env/.cfg', 'creds.yaml')
+    pathcreds = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
+    logging.info(pathcreds)
 
-    with open(pathcreds, 'r') as creds:
-        creds = yaml.safe_load(creds)
-        key = creds['lastfm']['key']
-        logging.info('Credentials read.')
+    load_dotenv(pathcreds)
+
+    key = os.getenv('LASTFM_KEY')
+    logging.info('Credentials read.')
 
     tags = ['heavy+metal',
             'thrash+metal',
