@@ -83,7 +83,15 @@ Las mismas son SCD2, actualizandose en caso de que un artista del top 50 vuelva 
 #### Hechos
 Utilizando las tablas de staging y dimensiones se producen las siguientes tablas de hechos:
 - fact_tracks
+  - stats_date
+  - track_id
+  - playcount
+  - listeners
+  - rank
 - fact_albums
+  - stats_date
+  - album_id
+  - playcount
 
 ## Como ejecutar
 ### .env
