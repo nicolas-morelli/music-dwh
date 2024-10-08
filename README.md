@@ -89,11 +89,11 @@ Utilizando las tablas de staging y dimensiones se producen las siguientes tablas
 ### .env
 Es necesario contar con un archivo .env dentro del directorio airflow la siguiente estructura:
 
-REDSHIFT_HOST=Host de la base de datos Redshift
-REDSHIFT_PORT=Puerto de la base de datos Redshift
-REDSHIFT_DB=Base de datos Redshift
-REDSHIFT_USER=Usuario de la base de datos
-REDSHIFT_PW=Contraseña del usuario
+- REDSHIFT_HOST=Host de la base de datos Redshift
+- REDSHIFT_PORT=Puerto de la base de datos Redshift
+- REDSHIFT_DB=Base de datos Redshift
+- REDSHIFT_USER=Usuario de la base de datos
+- REDSHIFT_PW=Contraseña del usuario
 
 LASTFM_KEY=Llave de la API de last.fm
 LASTFM_SECRET=Secreto de la API de last.fm (no se utiliza en el proyecto de momento y puede ser obviada)
@@ -104,24 +104,4 @@ Se debe realizar compose del docker-compose provisto, el cual creara una instanc
 Esto permitira la ejecucion diaria del ETL, lo cual generara los datos con el paso del tiempo.
 
 ### Sphinx
-En la carpeta docs ejecutar `sphinx-quickstart (debe instalar sphinx previamente).
-
-Luego, en el archivo conf.py incluir 
-
-```python 
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath('../airflow'))
-```
-
-Y agregue en extensions 'sphinx.ext.autodoc'.
-
-En terminal ejecute los siguientes comandos
-
-```
-sphinx-apidoc -o .\music-dwh\docs .\music-dwh
-make html
-```
-
-Deberia visualizar la documentacion correctamente.
+Puede ver documentacion del proyecto en localhost::8000.

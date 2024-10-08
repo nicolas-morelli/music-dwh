@@ -1,7 +1,7 @@
-scripts
-=======
+dags
+====
 
 .. toctree::
    :maxdepth: 4
 
-   api
+   dags

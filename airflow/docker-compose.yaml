@@ -284,5 +284,23 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  sphinx:
+    image: python:3.10
+    container_name: sphinx
+    command: bash -c "
+      pip install -r /requirements.txt &&
+      pip install sphinx sphinx_rtd_theme sphinx-autodoc-typehints &&
+      sphinx-apidoc -o /docs /dags &&  
+      cd /docs &&                     
+      make html &&                            
+      cd _build/html &&                       
+      python -m http.server 8000"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/requirements.txt:/requirements.txt
+      - ${AIRFLOW_PROJ_DIR:-.}/docs:/docs
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/dags
+    ports:
+      - "8000:8000"
+
 volumes:
   postgres-db-volume:
