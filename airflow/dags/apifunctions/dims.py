@@ -165,7 +165,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute(f'SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -205,7 +205,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
                                 expiration_date = '{kwargs['today']}'
                             WHERE last_known = 'Yes'
                                 AND (current_rank IS NOT NULL
-                                    OR artist_name IN (SELECT name FROM "{schema}"."staging_artists_daily" WHERE stats_date = {kwargs['today']}))
+                                    OR artist_name IN (SELECT name FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'))
                         """)
             conn.commit()
 
@@ -236,7 +236,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute(f'SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -277,7 +277,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute(f'SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -326,7 +326,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
                             WHERE last_known = 'Yes'
                                 AND (current_rank IS NOT NULL
                                     OR track_name || artist_id IN (SELECT name || artist_id FROM "{schema}"."staging_tracks_daily"
-                                                                                            JOIN "{schema}"."dim_artists" ON artist = artist_name) WHERE stats_date = {kwargs['today']})
+                                                                                            JOIN "{schema}"."dim_artists" ON artist = artist_name WHERE stats_date = '{kwargs['today']}'))
                         """)
             conn.commit()
             logging.info('Updated previous last known.')
@@ -355,7 +355,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute(f'SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -365,7 +365,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Handled new data.')
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             logging.info('Fetched artist.')
@@ -401,7 +401,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute(f'SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -425,7 +425,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             daily_new_albums['album_id'] = pd.NA
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             daily_new_albums = daily_new_albums.merge(artists, on='artist', how='inner')
@@ -449,7 +449,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
                                 expiration_date = '{kwargs['today']}'
                             WHERE last_known = 'Yes'
                                 AND album_name || artist_id IN (SELECT name || artist_id FROM "{schema}"."staging_albums_daily"
-                                                                                        JOIN "{schema}"."dim_artists" ON artist = artist_name WHERE stats_date = {kwargs['today']})
+                                                                                        JOIN "{schema}"."dim_artists" ON artist = artist_name WHERE stats_date = '{kwargs['today']}')
                         """)
             conn.commit()
 
@@ -475,7 +475,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute(f'SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = {kwargs['today']}')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')

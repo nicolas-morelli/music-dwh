@@ -172,7 +172,7 @@ def load_df_and_to_redshift(func):
         logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         logging.info('Creating table.')
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema=schema, mode='append', lock=True, index=False)
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema=schema, mode='append', use_column_names=True, lock=True, index=False)
         logging.info(f'{table_name} loaded.')
         return
 

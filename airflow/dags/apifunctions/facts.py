@@ -54,7 +54,7 @@ def track_fact(*args, **kwargs) -> pd.DataFrame:
     schema = kwargs['schema']
 
     with conn.cursor() as cur:
-        cur.execute(f'SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = {kwargs['today']}')
+        cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
         daily = cur.fetch_dataframe()
 
         logging.info('Fetched daily.')
@@ -85,7 +85,7 @@ def album_fact(*args, **kwargs) -> pd.DataFrame:
     schema = kwargs['schema']
 
     with conn.cursor() as cur:
-        cur.execute(f'SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = {kwargs['today']}')
+        cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
         daily = cur.fetch_dataframe()
 
         logging.info('Fetched daily.')
