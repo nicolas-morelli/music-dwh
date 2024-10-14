@@ -155,6 +155,7 @@ def load_df_and_to_redshift(func):
         host = os.getenv('REDSHIFT_HOST')
         port = os.getenv('REDSHIFT_PORT')
         db = os.getenv('REDSHIFT_DB')
+        schema = os.getenv('REDSHIFT_SCHEMA')
         user = os.getenv('REDSHIFT_USER')
         password = os.getenv('REDSHIFT_PW')
         key = os.getenv('LASTFM_KEY')
@@ -171,8 +172,7 @@ def load_df_and_to_redshift(func):
         logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         logging.info('Creating table.')
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='overwrite', overwrite_method='drop', lock=True, index=False)
-        wr.redshift.to_sql(df=df_api, con=conn, table=('backup_' + table_name), schema='2024_domingo_nicolas_morelli_schema', mode='append', lock=True, index=False)
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema=schema, mode='append', use_column_names=True, lock=True, index=False)
         logging.info(f'{table_name} loaded.')
         return
 

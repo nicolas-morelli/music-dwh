@@ -116,6 +116,7 @@ def from_redshift_to_redshift(func):
         host = os.getenv('REDSHIFT_HOST')
         port = os.getenv('REDSHIFT_PORT')
         db = os.getenv('REDSHIFT_DB')
+        schema = os.getenv('REDSHIFT_SCHEMA')
         user = os.getenv('REDSHIFT_USER')
         password = os.getenv('REDSHIFT_PW')
         logging.info('Credentials read.')
@@ -124,6 +125,7 @@ def from_redshift_to_redshift(func):
 
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         kwargs['conn'] = conn
+        kwargs['schema'] = schema
 
         df_api = func(*args, **kwargs)
         df_api = df_api.infer_objects()
@@ -131,7 +133,7 @@ def from_redshift_to_redshift(func):
         table_name = kwargs['table_name']
 
         logging.info('Creating table.')
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='append', use_column_names=True, lock=True, index=False, chunksize=1000)
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema=schema, mode='append', use_column_names=True, lock=True, index=False, chunksize=1000)
         logging.info(f'{table_name} loaded.')
 
         return
@@ -148,13 +150,14 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
     """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
+    schema = kwargs['schema']
 
     try:
         with conn.cursor() as cur:
             cur.execute(f"""
 
                         SELECT *
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                        FROM "{schema}"."{table_name}"
                         WHERE last_known = 'Yes'
 
                         """)
@@ -162,7 +165,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -187,7 +190,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Concatenated data.')
 
-            cur.execute(f'SELECT MAX(artist_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+            cur.execute(f'SELECT MAX(artist_id) FROM "{schema}"."{table_name}"')
 
             max_id = cur.fetch_dataframe().iloc[0, 0]
 
@@ -197,12 +200,12 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('New ids generated.')
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+            cur.execute(f"""UPDATE "{schema}"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{kwargs['today']}'
                             WHERE last_known = 'Yes'
                                 AND (current_rank IS NOT NULL
-                                    OR artist_name IN (SELECT name FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"))
+                                    OR artist_name IN (SELECT name FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'))
                         """)
             conn.commit()
 
@@ -213,7 +216,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
             logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
-                            CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            CREATE TABLE "{schema}"."{table_name}"
                             (
                               id INTEGER IDENTITY(1, 1),
                               artist_id INTEGER,
@@ -233,7 +236,7 @@ def artist_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_artists_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_artists_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -258,14 +261,15 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
     """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
+    schema = kwargs['schema']
 
     try:
         with conn.cursor() as cur:
             cur.execute(f"""
 
                             SELECT tn.*, a.artist_name AS artist
-                            FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
-                            JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                            FROM "{schema}"."{table_name}" tn
+                            JOIN (SELECT DISTINCT artist_id, artist_name FROM "{schema}".dim_artists) a ON a.artist_id = tn.artist_id
                             WHERE tn.last_known = 'Yes'
 
                         """)
@@ -273,7 +277,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -297,7 +301,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             daily_new_tracks['track_id'] = pd.NA
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             daily_new_tracks = daily_new_tracks.merge(artists, on='artist', how='inner')
@@ -306,7 +310,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Concatenated data.')
 
-            cur.execute(f'SELECT MAX(track_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+            cur.execute(f'SELECT MAX(track_id) FROM "{schema}"."{table_name}"')
 
             max_id = cur.fetch_dataframe().iloc[0, 0]
 
@@ -316,13 +320,13 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('New ids generated.')
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+            cur.execute(f"""UPDATE "{schema}"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{kwargs['today']}'
                             WHERE last_known = 'Yes'
                                 AND (current_rank IS NOT NULL
-                                    OR track_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"
-                                                                                            JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name))
+                                    OR track_name || artist_id IN (SELECT name || artist_id FROM "{schema}"."staging_tracks_daily"
+                                                                                            JOIN "{schema}"."dim_artists" ON artist = artist_name WHERE stats_date = '{kwargs['today']}'))
                         """)
             conn.commit()
             logging.info('Updated previous last known.')
@@ -332,7 +336,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
             logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
-                            CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            CREATE TABLE "{schema}"."{table_name}"
                             (
                               id INTEGER IDENTITY(1, 1),
                               track_id INTEGER,
@@ -351,7 +355,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -361,7 +365,7 @@ def tracks_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Handled new data.')
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             logging.info('Fetched artist.')
@@ -381,14 +385,15 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
     """
     conn = kwargs['conn']
     table_name = kwargs['table_name']
+    schema = kwargs['schema']
 
     try:
         with conn.cursor() as cur:
             cur.execute(f"""
 
                         SELECT tn.*, a.artist_name AS artist
-                        FROM "2024_domingo_nicolas_morelli_schema"."{table_name}" tn
-                        JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = tn.artist_id
+                        FROM "{schema}"."{table_name}" tn
+                        JOIN (SELECT DISTINCT artist_id, artist_name FROM "{schema}".dim_artists) a ON a.artist_id = tn.artist_id
                         WHERE tn.last_known = 'Yes'
 
                         """)
@@ -396,7 +401,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Fetched last known data.')
 
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -420,7 +425,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             daily_new_albums['album_id'] = pd.NA
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             daily_new_albums = daily_new_albums.merge(artists, on='artist', how='inner')
@@ -429,7 +434,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Concatenated data.')
 
-            cur.execute(f'SELECT MAX(album_id) FROM "2024_domingo_nicolas_morelli_schema"."{table_name}"')
+            cur.execute(f'SELECT MAX(album_id) FROM "{schema}"."{table_name}"')
 
             max_id = cur.fetch_dataframe().iloc[0, 0]
 
@@ -439,12 +444,12 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('New ids generated.')
 
-            cur.execute(f"""UPDATE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+            cur.execute(f"""UPDATE "{schema}"."{table_name}"
                             SET last_known = 'No',
                                 expiration_date = '{kwargs['today']}'
                             WHERE last_known = 'Yes'
-                                AND album_name || artist_id IN (SELECT name || artist_id FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"
-                                                                                        JOIN "2024_domingo_nicolas_morelli_schema"."dim_artists" ON artist = artist_name)
+                                AND album_name || artist_id IN (SELECT name || artist_id FROM "{schema}"."staging_albums_daily"
+                                                                                        JOIN "{schema}"."dim_artists" ON artist = artist_name WHERE stats_date = '{kwargs['today']}')
                         """)
             conn.commit()
 
@@ -455,7 +460,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
             logging.info('Table not found. Creating.')
             conn.commit()
             cur.execute(f"""
-                            CREATE TABLE "2024_domingo_nicolas_morelli_schema"."{table_name}"
+                            CREATE TABLE "{schema}"."{table_name}"
                             (
                               id INTEGER IDENTITY(1, 1),
                               album_id INTEGER,
@@ -470,7 +475,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
                         """)
             conn.commit()
-            cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
+            cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
             daily = cur.fetch_dataframe()
 
             logging.info('Fetched daily data.')
@@ -480,7 +485,7 @@ def albums_dim(*args, **kwargs) -> pd.DataFrame:
 
             logging.info('Handled new data.')
 
-            cur.execute('SELECT DISTINCT artist_name, artist_id FROM "2024_domingo_nicolas_morelli_schema"."dim_artists"')
+            cur.execute(f'SELECT DISTINCT artist_name, artist_id FROM "{schema}"."dim_artists"')
             artists = cur.fetch_dataframe().rename(columns={'artist_name': 'artist'})
 
             logging.info('Fetched artist.')

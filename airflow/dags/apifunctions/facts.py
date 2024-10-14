@@ -19,6 +19,7 @@ def from_redshift_to_redshift(func):
         host = os.getenv('REDSHIFT_HOST')
         port = os.getenv('REDSHIFT_PORT')
         db = os.getenv('REDSHIFT_DB')
+        schema = os.getenv('REDSHIFT_SCHEMA')
         user = os.getenv('REDSHIFT_USER')
         password = os.getenv('REDSHIFT_PW')
         logging.info('Credentials read.')
@@ -26,6 +27,7 @@ def from_redshift_to_redshift(func):
         logging.info('Connecting to Redshift.')
         conn = redshift_connector.connect(database=db, user=user, password=password, host=host, port=port)
         kwargs['conn'] = conn
+        kwargs['schema'] = schema
 
         df_api = func(*args, **kwargs)
         df_api = df_api.infer_objects()
@@ -33,7 +35,7 @@ def from_redshift_to_redshift(func):
         table_name = kwargs['table_name']
 
         logging.info('Creating table.')
-        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema='2024_domingo_nicolas_morelli_schema', mode='append', use_column_names=True, lock=True, index=False)
+        wr.redshift.to_sql(df=df_api, con=conn, table=table_name, schema=schema, mode='append', use_column_names=True, lock=True, index=False)
         logging.info(f'{table_name} loaded.')
 
         return
@@ -49,16 +51,17 @@ def track_fact(*args, **kwargs) -> pd.DataFrame:
     :rtype: pd.DataFrame
     """
     conn = kwargs['conn']
+    schema = kwargs['schema']
 
     with conn.cursor() as cur:
-        cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_tracks_daily"')
+        cur.execute(f"""SELECT * FROM "{schema}"."staging_tracks_daily" WHERE stats_date = '{kwargs['today']}'""")
         daily = cur.fetch_dataframe()
 
         logging.info('Fetched daily.')
 
-        cur.execute("""SELECT DISTINCT track_name, track_id, artist_name, t.artist_id
-                    FROM "2024_domingo_nicolas_morelli_schema".dim_tracks t
-                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
+        cur.execute(f"""SELECT DISTINCT track_name, track_id, artist_name, t.artist_id
+                    FROM "{schema}".dim_tracks t
+                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "{schema}".dim_artists) a ON a.artist_id = t.artist_id
                     """)
         artists = cur.fetch_dataframe().rename(columns={'track_name': 'name', 'artist_name': 'artist'})
 
@@ -79,16 +82,17 @@ def album_fact(*args, **kwargs) -> pd.DataFrame:
     :rtype: pd.DataFrame
     """
     conn = kwargs['conn']
+    schema = kwargs['schema']
 
     with conn.cursor() as cur:
-        cur.execute('SELECT * FROM "2024_domingo_nicolas_morelli_schema"."staging_albums_daily"')
+        cur.execute(f"""SELECT * FROM "{schema}"."staging_albums_daily" WHERE stats_date = '{kwargs['today']}'""")
         daily = cur.fetch_dataframe()
 
         logging.info('Fetched daily.')
 
-        cur.execute("""SELECT DISTINCT album_name, album_id, artist_name, t.artist_id
-                    FROM "2024_domingo_nicolas_morelli_schema"."dim_albums" t
-                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "2024_domingo_nicolas_morelli_schema".dim_artists) a ON a.artist_id = t.artist_id
+        cur.execute(f"""SELECT DISTINCT album_name, album_id, artist_name, t.artist_id
+                    FROM "{schema}"."dim_albums" t
+                    JOIN (SELECT DISTINCT artist_id, artist_name FROM "{schema}".dim_artists) a ON a.artist_id = t.artist_id
                     """)
         artists = cur.fetch_dataframe().rename(columns={'album_name': 'name', 'artist_name': 'artist'})
 
