@@ -104,6 +104,7 @@ Es necesario contar con un archivo .env dentro del directorio airflow la siguien
 - REDSHIFT_HOST=Host de la base de datos Redshift
 - REDSHIFT_PORT=Puerto de la base de datos Redshift
 - REDSHIFT_DB=Base de datos Redshift
+- REDSHIFT_SCHEMA=Schema de datos Redshift
 - REDSHIFT_USER=Usuario de la base de datos
 - REDSHIFT_PW=Contraseña del usuario
 
